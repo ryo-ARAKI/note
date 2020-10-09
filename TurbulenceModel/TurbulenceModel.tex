@@ -1,0 +1,646 @@
+\documentclass[12pt,a4paper]{jsarticle}
+\usepackage{bm}
+\usepackage{amsmath,amssymb}
+\usepackage{ascmac}
+\def\vector#1{\mbox{\boldmath $#1$}}
+%
+\usepackage{graphicx,color}
+\graphicspath{{../../SEM_practice/Patera/Accuracy/},{/home/ryo/Pictures/}}
+%
+%参考文献:biblatexを使う
+\usepackage[backend=bibtex, style=numeric]{biblatex}
+\addbibresource{TurbulenceModel.bib}
+%
+% \usepackage{xcolor}
+% \usepackage[draft]{graphicx}
+% \usepackage{booktabs} % 表の横罫線
+% \usepackage{lscape}  % 表などを90度回転させる
+%% 囲み枠
+% \usepackage{tcolorbox}
+\usepackage{longtable} % ページをまたぐ表の作成
+\makeatletter %式番号を章ごとに
+  \renewcommand{\theequation}{%
+  \thesection.\arabic{equation}}
+  \@addtoreset{equation}{section}
+  \renewcommand{\thefigure}{% 図番号の付け方
+	\thesection.\arabic{figure}}
+	\@addtoreset{figure}{section}
+  \renewcommand{\thetable}{% 表番号の付け方
+	\thesection.\arabic{table}}
+	\@addtoreset{table}{section}
+\makeatother
+\usepackage{subfig}
+%
+\title{乱流モデル勉強会(LESとRANS)}
+\author{荒木亮}
+\date{\today}
+
+\begin{document}
+%タイトル出力
+\maketitle
+%概要出力
+\begin{abstract}
+  「乱流モデル」のうちLESおよびRANSを対象に概説する．
+
+  文章中のノーテーションは\cite{Kajishima}に基づいており，この注釈書として読むことを想定している．
+\end{abstract}
+
+
+\section{支配方程式}
+\label{sec:BasicKnowledge}
+
+流体の非圧縮条件と運動方程式であるNavier-Stokes方程式を示す．
+\begin{equation}
+  \frac{\partial u_i}{\partial x_i} = 0
+  \label{eq:Incompressibility}
+\end{equation}
+\begin{equation}
+  \frac{\partial u_i}{\partial t} +\frac{\partial (u_i u_j)}{\partial x_j} = -\frac{1}{\rho} \frac{\partial p}{\partial x_i} +\frac{\partial}{\partial x_j} (2 \nu D_{ij})
+\label{eq:N-SEquation}
+\end{equation}
+ただし，粘性項をひずみ速度テンソル$D_{ij}$で書いている．
+\begin{align}
+  D_{ij} &= \frac{1}{2} \Big( \frac{\partial u_i}{\partial x_j} +\frac{\partial u_j}{\partial x_i} \Big)
+  \label{eq:VelocityStrainTensor} \\
+  \frac{\partial}{\partial x_j} (2 \nu D_{ij}) &= \nu \Big( \frac{\partial}{\partial x_j} \frac{\partial u_i}{\partial x_j} +\frac{\partial}{\partial x_j} \frac{\partial u_j}{\partial x_i} \Big) \nonumber \\
+    &= \nu \frac{\partial^2 u_i}{\partial x_j \partial x_j}
+\label{eq:DiffusionTerm}
+\end{align}
+
+
+\clearpage
+\section{LES}
+\label{sec:LES}
+
+
+\subsection{フィルター操作}
+\label{subsec:Filter}
+
+\noindent{・フィルタ関数$G(y)$の性質}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{itembox}[l]{\cite{Kajishima}での定義}
+  $G(y)$は$y=0$の近くで正の値をもち，$\displaystyle{\lim_{y \to \pm \infty} G(y) = 0}$となり，
+  \begin{equation}
+    \int_{-\infty}^\infty G(y) \mathrm{d}y =1 \tag{7.7}
+    \label{eq:RegularofFilterFunctionKajishima}
+  \end{equation}
+  であるようなもの．
+\end{itembox}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{itembox}[l]{\cite{KidaYanase}での定義}
+  $G(\vector{x})$は規格化条件
+  \begin{equation}
+    \int G(\vector{x}) \mathrm{d}\vector{x} =1 \tag{14.2}
+    \label{eq:RegularofFilterFunctionKidaYanase}
+  \end{equation}
+  と対称条件
+  \begin{equation}
+    G(\vector{x}) =G(-\vector{x}) \tag{14.3}
+    \label{eq:SymmetryofFilterFunctionKidaYanase}
+  \end{equation}
+  を満たすものとする．
+\end{itembox}\\
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+% \noindent{・ボックスフィルターのFourier変換\cite{Chiba}}
+%
+% 次式で定義するボックスフィルターのFourier変換を考える．
+% \begin{align}
+%   G(x) =\left\{ \begin{array}{ll}
+%   1/\Delta  & (|x| \le \Delta/2) \\
+%   0         & (|x| > \Delta/2) \\
+% \end{array} \right.
+% \label{eq:BoxFilter}
+% \end{align}
+%
+% ヘビサイド関数$H(x)$を用意する.
+% \begin{align}
+%   H(x) =\left\{ \begin{array}{ll}
+%   1  & (x > 0) \\
+%   0  & (x < 0) \\
+%   \end{array} \right.
+%   \label{eq:HeavisideFunction}
+% \end{align}
+%
+% これを用いてボックスフィルターを次のように書く．
+% \begin{equation}
+%   G(x) = \frac{1}{\Delta} \Big( H(x+\Delta/2) - H(x-\Delta/2) \Big)
+% \label{eq:BoxFilterwithHeavisideFunction}
+% \end{equation}
+%
+% $f(x)=H(x+1)-H(x-1)$のFourier変換は
+% \begin{equation}
+%   F(x) = \int_{-1}^1 \exp(-\mathrm{i}kx) \mathrm{d}x = \frac{2}{k} \sin(k)
+%   % \label{eq:BoxFilterwithHeavisideFunction}
+% \end{equation}
+%
+% より，$G(x) =\frac{1}{\Delta} f(\Delta x/2)$のFourier変換は次のようになる．
+% \begin{equation}
+%   \hat{G}(x) = \int_{-\Delta/2}^{\Delta/2} \frac{1}{\Delta} \exp(-\mathrm{i}kx\Delta/2) \mathrm{d}x = \frac{2}{\Delta k} \sin(\Delta k/2)
+%   % \label{eq:BoxFilterwithHeavisideFunction}
+% \end{equation}\\
+
+
+\noindent{・フィルタ操作と微分操作の交換について}
+
+物理量$f$にフィルタをかけ，GS(グリッドスケール)量$\bar{f}$とそこからの変動分$f'$に分ける．
+\begin{equation}
+  f = \bar{f} +f' \tag{7.7}
+  \label{eq:Filter}
+\end{equation}
+これは物理量をGS以上，以下の2つのスケールに分離している．
+しかし，フィルターが物理空間とは数空間のどちらか，あるいは両方でシャープでないため，厳密には分離できていない．
+
+そのため，微分とフィルタの交換
+\begin{equation}
+  \overline{ \frac{\partial f}{\partial x} } = \frac{\partial \bar{f}}{\partial x}
+  \label{eq:ExchangeofFilterDerivative}
+\end{equation}
+は厳密には成立しない．\\
+
+
+\noindent{・LESの基礎方程式の導出}
+
+Eq. \ref{eq:Incompressibility}とEq. \ref{eq:N-SEquation}にフィルタをかける．
+フィルタ操作と微分操作が可換であるとして，
+\begin{equation}
+  \overline{\frac{\partial u_i}{\partial x_i}} = 0 \leftrightarrow \frac{\partial \bar{u}_i}{\partial x_i} = 0 \tag{7.13}
+  \label{eq:FilteredIncompressibility}
+\end{equation}
+\begin{align}
+  \overline{\frac{\partial u_i}{\partial t}} +\overline{\frac{\partial (u_i u_j)}{\partial x_j}} &= -\frac{1}{\rho} \overline{\frac{\partial p}{\partial x_i}} +\overline{\frac{\partial}{\partial x_j} (2 \nu D_{ij})} \leftrightarrow \nonumber \\
+  \frac{\partial \bar{u}_i}{\partial t} +\frac{\partial (\bar{u}_i \bar{u}_j)}{\partial x_j} &= -\frac{1}{\rho} \frac{\partial \bar{p}}{\partial x_i} +\frac{\partial}{\partial x_j} (-\tau_{ij} +2 \nu \overline{D}_{ij}) \tag{7.16}
+\label{eq:FilteredN-SEquation}
+\end{align}
+
+Eq. \ref{eq:FilteredN-SEquation}において，両辺第一項は自明．
+
+左辺第二項を計算する．
+\begin{align}
+  \overline{\frac{\partial (u_i u_j)}{\partial x_j}} &= \frac{\partial \overline{(u_i u_j)}}{\partial x_j} \nonumber \\
+    &= \frac{\partial (\bar{u}_i \bar{u}_j)}{\partial x_j} +\underbrace{ \frac{\partial \overline{(u_i u_j)}}{\partial x_j} -\frac{\partial (\bar{u}_i \bar{u}_j)}{\partial x_j} }_{これを右辺にまとめる}
+\label{eq:FilteredAdvectionTerm}
+\end{align}
+
+\begin{align}
+  -\Big[ \frac{\partial \overline{(u_i u_j)}}{\partial x_j} -\frac{\partial (\bar{u}_i \bar{u}_j)}{\partial x_j} \Big] +\overline{\frac{\partial}{\partial x_j} (2 \nu D_{ij})} &= \frac{\partial}{\partial x_j} \Big[ -(\overline{u_i u_j} -\bar{u}_i \bar{u}_j) +2 \nu \overline{D}_{ij} \Big] \nonumber \\
+    &= \frac{\partial}{\partial x_j} (-\tau_{ij} +2 \nu \overline{D}_{ij})
+\label{eq:FilteredDiffusionTerm}
+\end{align}
+
+ここで導入した$\tau_{ij}=\overline{u_i u_j} -\bar{u}_i \bar{u}_j$をSGS応力とよぶ．\\
+
+\noindent{・$\tau_{ij}$の分解}
+
+SGS応力$\tau_{ij}$のうち，2次の相関を含む第一項を$u_i = \bar{u}_i +u_i'$で分解する．
+\begin{align}
+  \tau_{ij} &= \overline{u_i u_j} -\bar{u}_i \bar{u}_j \nonumber \\
+    &= \overline{(\bar{u}_i +u_i') (\bar{u}_j +u_j')} -\bar{u}_i \bar{u}_j \nonumber \\
+    &= \Big[ \overline{\bar{u}_i \bar{u}_j} +\overline{\bar{u}_i u_j'} +\overline{u_i' \bar{u}_j} +\overline{u_i' u_j'} \Big] -\bar{u}_i \bar{u}_j \nonumber \\
+    &= \Big[ \overline{\bar{u}_i \bar{u}_j} -\bar{u}_i \bar{u}_j \Big] +\Big[ \overline{\bar{u}_i u_j'} +\overline{u_i' \bar{u}_j} \Big] +\Big[ \overline{u_i' u_j'}  \Big] \nonumber \\
+    &= L_{ij} +C{ij} +R_{ij} \tag{7.20}
+\label{eq:DecompositionofSGSStress}
+\end{align}
+
+ただしLeonard項$L_{ij}$，クロス項$C_{ij}$，SGS Reynolds応力$R_{ij}$．\\
+
+
+\noindent{・$\tau_{ij}$のGalilean不変性について}
+
+$L_{ij}$，$C_{ij}$，$R_{ij}$それぞれを一定速度$U_i$で移動する系に移して検討する．
+
+$u_i \to u_i^* = u_i +U_i$とし，$u_i'^*=u_i'$と$\bar{U}=U$に注意して計算する．
+\begin{align}
+  L_{ij}^* &= \overline{\bar{u}_i^* \bar{u}_j^*} -\bar{u}_i^* \bar{u}_j^* \nonumber \\
+    &= \overline{(\bar{u}_i +U_i) (\bar{u}_j +U_j)} -(\bar{u}_i +U_i) (\bar{u}_j +U_j) \nonumber \\
+    &= \overline{\bar{u}_i \bar{u}_j} +\bar{\bar{u}}_i U_j +U_i \bar{\bar{u}}_j +U_i U_j -\bar{u}_i \bar{u}_j -\bar{u}_i U_j -U_i \bar{u}_j -U_i U_j \nonumber \\
+    &= \overline{\bar{u}_i \bar{u}_j} -\bar{u}_i \bar{u}_j +\big( \bar{\bar{u}}_i -\bar{u}_i \big) U_j +U_i \big( \bar{\bar{u}}_j -\bar{u}_j \big) \nonumber \\
+    &\ne L_{ij}
+\label{eq:GalileiTransformofL} \\
+  C_{ij}^* &= \overline{\bar{u}_i^* u_j'^*} +\overline{u_i'^* \bar{u}_j^*} \nonumber \\
+    &= \overline{(\bar{u}_i +U_i) u_j'} +\overline{u_i' (\bar{u}_j +U_j)} \nonumber \\
+    &= \overline{\bar{u}_i u_j'} +U_i \overline{u_j'} +\overline{u_i' \bar{u}_j} +\overline{u_i'} U_j \nonumber \\
+    &\ne C_{ij}
+\label{eq:GalileiTransformofC} \\
+  R_{ij}^* &= \overline{u_i'^* u_j'^*} \nonumber \\
+    &= \overline{u_i' u_j'} \nonumber \\
+    &= R_{ij}
+\label{eq:GalileiTransformofR}
+\end{align}
+
+より，Reynolds応力項$R_{ij}$のみがGalilean不変性を満たす．
+
+\subsection{Smagorinskyモデル}
+\label{subsec:SmagorinskyModel}
+
+Eq. \ref{eq:FilteredN-SEquation}に示すフィルターされたN-S式に$\bar{u}_i$を乗じて総和規約を取ることで，流れ場のエネルギ輸送方程式を導出する．
+\begin{equation}
+  \frac{\partial \bar{u}_i}{\partial t} +\frac{\partial (\bar{u}_i \bar{u}_j)}{\partial x_j} = -\frac{1}{\rho} \frac{\partial \bar{p}}{\partial x_i} +\frac{\partial}{\partial x_j} (-\tau_{ij} +2 \nu \overline{D}_{ij}) \tag{7.16}
+\label{eq:FilteredN-SEquation}
+\end{equation}
+\begin{align}
+  左辺 \cdot \bar{u}_i &= \frac{\partial \bar{u}_i}{\partial t} \bar{u}_i +\frac{\partial (\bar{u}_i \bar{u}_j)}{\partial x_j} \bar{u}_i \nonumber \\
+    &= \Big( \frac{\partial}{\partial t} +\bar{u}_j \frac{\partial}{\partial x_j} \Big) \Big( \frac{1}{2}\bar{u}_i \bar{u}_i \Big) \nonumber \\
+    &= \frac{ \overline{\mathrm{D}} k_{\mathrm{GS}} }{ \overline{\mathrm{D}} t}
+\label{eq:L_sideofkgs}
+\end{align}
+\begin{align}
+  右辺 \cdot \bar{u}_i &= -\frac{1}{\rho} \frac{\partial \bar{p}}{\partial x_i} \bar{u}_i +\frac{\partial}{\partial x_j} (-\tau_{ij} +2 \nu \overline{D}_{ij}) \bar{u}_i \nonumber \\
+    第一項 &: -\frac{1}{\rho} \frac{\partial \bar{p}}{\partial x_i} \bar{u}_i = \frac{\partial}{\partial x_j} \Big( -\frac{1}{\rho} \bar{p}\bar{u}_j \Big) \nonumber \\
+    第二項 &: \frac{\partial (-\tau_{ij})}{\partial x_j} \bar{u}_i = \frac{\partial}{\partial x_j} (-\tau_{ij} \bar{u}_i) -(-\tau_{ij}) \frac{\partial \bar{u}_i}{\partial x_j} \nonumber \\
+    第三項 &: \frac{\partial (2 \nu \overline{D}_{ij}) }{\partial x_j} \bar{u}_i = \frac{\partial}{\partial x_j} (2 \nu \overline{D}_{ij} \bar{u}_i) -2 \nu \overline{D}_{ij} \frac{\partial \bar{u}_i}{\partial x_j} \nonumber \\
+      &~~~~~~~~~~~~~~~~~~= \frac{\partial}{\partial x_j} (\nu \frac{\partial \bar{u}_i}{\partial x_j} \bar{u}_i) -\nu \frac{\partial \bar{u}_i}{\partial x_j} \frac{\partial \bar{u}_i}{\partial x_j} \nonumber \\
+  \therefore 右辺 \cdot \bar{u}_i &= \frac{\partial}{\partial x_j} \Big( -\frac{1}{\rho}\bar{p}\bar{u}_j -\tau_{ij}\bar{u}_i +\nu \frac{\partial k_{\mathrm{GS}}}{\partial x_j} \Big) +\tau_{ij} \overline{D}_{ij} -\bar{\varepsilon}_{\mathrm{GS}}
+  % &= \frac{\partial}{\partial x_j} \Big( -\frac{1}{\rho}\bar{p}\bar{u}_j -\tau_{ij}\bar{u}_i +\nu \frac{\partial \bar{u}_i}{\partial x_j} \bar{u}_i \Big) +\tau_{ij} \frac{\partial \bar{u}_{i}}{\partial x_j} -\nu \frac{\partial \bar{u}_i}{\partial x_j} \frac{\partial \bar{u}_i}{\partial x_j} \nonumber \\
+\label{eq:R_sideofkgs}
+\end{align}
+
+以上をまとめて
+\begin{equation}
+  \Big( \frac{\partial}{\partial t} +\bar{u}_j \frac{\partial}{\partial x_j} \Big) k_{\mathrm{GS}} = \frac{\partial}{\partial x_j} \Big( -\frac{1}{\rho}\bar{p}\bar{u}_j -\tau_{ij}\bar{u}_i +\nu \frac{\partial k_{\mathrm{GS}}}{\partial x_j} \Big) +\tau_{ij} \overline{D}_{ij} -\bar{\varepsilon}_{\mathrm{GS}} \tag{7.29}
+\label{eq:GSScaleEnergyEquation}
+\end{equation}
+
+ここで$\tau_{ij}\overline{D}_{ij}$がSGSスケールへのエネルギ輸送率となる．\\
+
+SGSスケールに送られるエネルギ$\tau_{ij} \overline{D}_{ij}$と，SGSスケールで散逸するエネルギ$\varepsilon_{\mathrm{SGS}}$が釣り合うことを要請する．
+これは局所平衡の仮定(エネルギが瞬時に散逸する仮定)である．
+\begin{equation}
+  \tau_{ij} \overline{D}_{ij} +\varepsilon_{\mathrm{SGS}} = 0 \tag{7.32}
+\label{eq:LocalEquilibrium}
+\end{equation}
+
+SGSスケールでのエネルギ散逸$\varepsilon_{\mathrm{SGS}}$は，散逸項$\varepsilon$から導出できる．
+\begin{align}
+  \varepsilon &= \nu \frac{\partial u_i}{\partial x_j} \frac{\partial u_i}{\partial x_j} \nonumber \\
+  \varepsilon_{\mathrm{SGS}} &= \bar{\varepsilon} -\varepsilon_{\mathrm{GS}} = \nu \overline{ \frac{\partial u_i}{\partial x_j} \frac{\partial u_i}{\partial x_j} } -\nu \frac{\partial \bar{u}_i}{\partial x_j} \frac{\partial \bar{u}_i}{\partial x_j} \tag{7.31}
+\label{eq:SGSDifusion}
+\end{align}
+
+結局，モデル化に必要な量のうちSGS応力$\tau_{ij}$のみが2次の相関を含む．
+これを1次の量で表したい．
+渦粘性近似を導入する．
+\begin{align}
+  \tau_{ij} &= \overline{u_i u_j} -\bar{u}_i \bar{u}_j \nonumber \\
+  \tau_{ij} &\fallingdotseq -2\nu_e \overline{D}_{ij} +\frac{1}{3} \delta_{ij} \tau_{kk}
+\label{eq:EddyViscosityApproximation}
+\end{align}
+ここで，等方成分$\displaystyle{ \frac{1}{3} \delta_{ij} \tau_{kk} }$は圧力項にくりこまれる．
+非等方成分のみ表したのがEq. 7.33である．
+
+この仮定をEq. \ref{eq:FilteredN-SEquation}に導入する．
+\begin{align}
+  \frac{\partial \bar{u}_i}{\partial t} +\frac{\partial (\bar{u}_i \bar{u}_j)}{\partial x_j} &= -\frac{1}{\rho} \frac{\partial \bar{p}}{\partial x_i} +\frac{\partial}{\partial x_j} (-\tau_{ij} +2 \nu \overline{D}_{ij}) \nonumber \\
+    &= -\frac{1}{\rho} \frac{\partial \bar{p}}{\partial x_i} +\frac{\partial}{\partial x_j} \bigl\{ (-2\nu_e \overline{D}_{ij} +\frac{1}{3} \delta_{ij} \tau_{kk}) +2 \nu \overline{D}_{ij} \bigr\} \nonumber \\
+    &= -\frac{1}{\rho} \frac{\partial (\bar{p}+\rho \tau_{kk}/3 )}{\partial x_i} +\frac{\partial}{\partial x_j} \{2 (\nu +\nu_e) \overline{D}_{ij}\} \nonumber \\
+    &= -\frac{1}{\rho} \frac{\partial \bar{P}}{\partial x_i} +\frac{\partial}{\partial x_j} \{2 (\nu +\nu_e) \overline{D}_{ij}\} \tag{7.34}
+\label{eq:SmagorinskyNSEquation}
+\end{align}
+
+
+\subsection{Smagorinsky定数}
+\label{subsec:SmagorinskyConstant}
+
+前節で導入した渦動粘性係数$\nu_e$を具体的な形で求めたい．
+次元解析より$[\nu_e] =[\mathrm{L}^2/\mathrm{T}] =[\mathrm{L}/\mathrm{T}][\mathrm{L}]$なので，速度スケール$q$と長さスケール$l$で表せる．
+\begin{equation}
+  \nu_e = C_v ql \tag{7.35}
+\label{eq:VortexKinematicViscosity}
+\end{equation}
+
+また，SGSスケールでのエネルギ散逸$\varepsilon_{\mathrm{SGS}}$は，$[\varepsilon_{\mathrm{SGS}}] =[\mathrm{L}^2/\mathrm{T}^3] =[\mathrm{L}/\mathrm{T}]^3 [1/\mathrm{L}]$の次元を持つ．
+\begin{equation}
+  \varepsilon_{\mathrm{SGS}} = C_\varepsilon \frac{q^3}{l}
+  \label{eq:DiffusionSGS}
+\end{equation}
+
+ここから$q$を消去する．
+\begin{equation}
+  \frac{\varepsilon_{\mathrm{SGS}}}{\nu_e^3} = \frac{C_\varepsilon}{C_v^3} \frac{1}{l^4}
+\end{equation}
+
+
+また，2式Eq. \ref{eq:VortexKinematicViscosity}とEq. \ref{eq:DiffusionSGS}を，Eq. \ref{eq:LocalEquilibrium}で結びつける．
+\begin{align}
+  \varepsilon_{\mathrm{SGS}} &= -\tau_{ij} \overline{D}_{ij} \nonumber \\
+    &= 2 \nu_e \overline{D}_{ij} \overline{D}_{ij} \nonumber \\
+  \therefore \frac{\varepsilon_{\mathrm{SGS}}}{\nu_e^3} &= \frac{2 \overline{D}_{ij} \overline{D}_{ij}}{\nu_e^2}
+\end{align}
+
+よって，
+\begin{equation}
+  \frac{C_\varepsilon}{C_v^3} \frac{1}{l^4} = \frac{2 \overline{D}_{ij} \overline{D}_{ij}}{\nu_e^2}
+\end{equation}
+
+$\nu_e$について解き，
+\begin{align}
+  \nu_e^2 &= \frac{C_v^3}{C_\varepsilon} l^4 2 \overline{D}_{ij} \overline{D}_{ij} \nonumber \\
+  \nu_e &= \sqrt{\frac{C_v^3}{C_\varepsilon}} \cdot l^2 \cdot \sqrt{2 \overline{D}_{ij} \overline{D}_{ij}} \nonumber \\
+    &= C_s^2 \cdot \Delta^2 \cdot |\overline{D}| \tag{7.37}
+\end{align}
+
+ここで$C_s$がSmagorinsky定数であり，Kolmogorovのエネルギスペクトル指数から理論値を計算することができる．\\
+
+これによって得られた普遍的なSmagorinsky定数$C_{\varepsilon}$から計算した$\nu_e$は常に正で，GSスケールからSGSスケールへエネルギが流れることを意味する．
+これは，逆カスケードや壁近傍の流れに対応できない．
+
+これを改良するため，壁法則を導入する，$\tau_{ij}$の分解にさらにモデルを適用する，Smagorinsky定数$C_{\varepsilon}$を時空間変数によるものとする，などの理論がある．
+
+\clearpage
+\section{RANS}
+\label{sec:RANS}
+
+
+\subsection{Reynolds平均}
+\label{subsec:ReynoldsAverage}
+
+\noindent{・平均操作について}
+
+流れ場が統計的に定常なら時間平均，空間的に一様なら空間平均を取ればよい．
+より一般にはアンサンブル平均を用いる．
+
+流速$u_i$を平均$\bar{u}_i$と乱れ$u_i'$に分解する．
+\begin{equation}
+  u_i = \bar{u}_i +u_i'
+\label{eq:ReynoldsDecomposition}
+\end{equation}
+
+ここで，平均値も緩やかに変動することから，「平均値と変動値の積(=相関)の平均」は0にならず，「平均値のアンサンブル平均」は平均値と一致しない．
+\begin{equation}
+  \overline{u_i' \bar{u}_j} \ne 0, ~~~~ \bar{\bar{u}}_i \ne \bar{u}_i \tag{6.1}
+  \label{eq:AverageofAverage}
+\end{equation}
+
+しかし，\underline{上式が成り立つような平均操作}を定義し，これをReynolds平均とよぶ．
+\begin{equation}
+  \overline{u_i'} = 0, ~~~~ \overline{u_i' \bar{u}_j} = 0, ~~~~ \bar{\bar{u}}_i = \bar{u}_i \tag{6.2}
+  \label{eq:CharacteristicsofReynoldsAverage}
+\end{equation}
+
+このとき平均操作と微分操作の交換が許される．
+\begin{equation}
+  \overline{ \frac{\partial u}{\partial x} } = \frac{\partial \bar{u}}{\partial x}
+  \label{eq:ExchangeofAverageDerivative}
+\end{equation}
+
+\noindent{・RANSの基礎方程式の導出}
+
+Eq. \ref{eq:Incompressibility}とEq. \ref{eq:N-SEquation}をReynolds平均する．
+\begin{equation}
+  \overline{\frac{\partial u_i}{\partial x_i}} = 0 \leftrightarrow \frac{\partial \bar{u}_i}{\partial x_i} = 0 \tag{6.4}
+  \label{eq:AveragedIncompressibility}
+\end{equation}
+\begin{align}
+  \overline{\frac{\partial u_i}{\partial t}} +\overline{\frac{\partial (u_i u_k)}{\partial x_k}} &= -\frac{1}{\rho} \overline{\frac{\partial p}{\partial x_i}} +\overline{\frac{\partial}{\partial x_k} (2 \nu D_{ik})} \leftrightarrow \nonumber \\
+  \frac{\partial \bar{u}_i}{\partial t} +\frac{\partial (\bar{u}_i \bar{u}_k)}{\partial x_k} &= -\frac{1}{\rho} \frac{\partial \bar{p}}{\partial x_i} +\frac{\partial}{\partial x_k} (-\tau_{ik} +2 \nu \overline{D}_{ik}) \tag{6.6}
+\label{eq:AveragedN-SEquation}
+\end{align}
+%
+Eq. \ref{eq:AveragedN-SEquation}はEq. \ref{eq:FilteredN-SEquation}と同じ計算で得られるが，左辺第二項のみ異なる．
+\begin{equation}
+  \overline{u_i u_j} = \bar{u}_i \bar{u}_j +\overline{u_i' u_j'} \tag{6.8}
+  \label{eq:NonlinearTermofReynoldsAverage}
+\end{equation}
+%
+よってReynolds応力$\tau_{ij}$は次式で定まる．
+\begin{equation}
+  \tau_{ij} = \overline{u_i' u_j'} \tag{6.9}
+  \label{eq:ReynoldsStress}
+\end{equation}
+
+
+\subsection{Reynolds応力方程式}
+\label{subsec:ReynoldsStressEquation}
+
+元の連続の式Eq. \ref{eq:Incompressibility}からReynolds平均された方程式Eq. \ref{eq:AveragedIncompressibility}を除すことで，「変動速度の非圧縮条件」を得る．
+\begin{equation}
+  \frac{\partial u_i'}{\partial x_i} = 0 \tag{6.10}
+  \label{eq:N-S-AveragedIncompressibility}
+\end{equation}
+
+元のNavier-Stokes方程式Eq. \ref{eq:N-SEquation}からReynolds平均された方程式Eq. \ref{eq:AveragedN-SEquation}を除すことで，「変動速度のNavier-Stokes方程式」を得る．
+\begin{align*}
+  時間微分項 &: \frac{\partial u_i}{\partial t} -\frac{\partial \bar{u}_i}{\partial t} = \frac{\partial u_i'}{\partial t} \\
+  移流項    &: \frac{\partial u_i u_k}{\partial x_k} -\frac{\partial (\bar{u}_i \bar{u}_k)}{\partial x_k} = \frac{\partial}{\partial x_k}  (u_i' u_k' +\bar{u}_i u_k' +u_i' \bar{u}_k) \\
+  圧力項    &: -\frac{1}{\rho} \frac{\partial p}{\partial x_i} +\frac{1}{\rho} \frac{\partial \bar{p}}{\partial x_i} = -\frac{1}{\rho} \frac{\partial p'}{\partial x_i} \\
+  粘性項    &: \frac{\partial}{\partial x_k} (2 \nu D_{ik}) -\frac{\partial}{\partial x_k} (-\tau_{ik} +2 \nu \overline{D}_{ik}) = \frac{\partial}{\partial x_k} (\tau_{ik} +2 \nu D_{ik}')
+\end{align*}
+\begin{equation}
+  \frac{\partial u_i'}{\partial t} +\bar{u}_k \frac{\partial u_i'}{\partial x_k} = -\frac{1}{\rho} \frac{\partial p'}{\partial x_i} +\frac{\partial}{\partial x_k} (-u_i' u_k' -\bar{u}_i u_k' +\tau_{ik} +2 \nu D_{ik}') \tag{6.11}
+  \label{eq:N-S-AveragedN-SEquation}
+\end{equation}
+
+Eq. \ref{eq:N-S-AveragedN-SEquation}に$u_j'$を乗じ，Reynolds平均をとり，添字$i$と$j$を入れ替えて足すことでReynolds応力方程式を導出する．
+Eq. \ref{eq:N-S-AveragedN-SEquation}の各項に番号をふって再掲する．
+\begin{equation*}
+  \frac{\partial u_i'}{\partial t}_{\textcircled{\scriptsize 1}} +\bar{u}_k \frac{\partial u_i'}{\partial x_k}_{\textcircled{\scriptsize 2}} = -\frac{1}{\rho} \frac{\partial p'}{\partial x_i}_{\textcircled{\scriptsize 3}} +\frac{\partial}{\partial x_k} (-u_i' u_{k'\textcircled{\scriptsize 4}} -\bar{u}_i u_{k'\textcircled{\scriptsize 5}} +\tau_{ik \textcircled{\scriptsize 6}} +2 \nu D'_{ik \textcircled{\scriptsize 7}})
+\end{equation*}
+丸数字をつけた各項を計算する．
+\begin{align*}
+  \textcircled{\scriptsize 1} &: \overline{ \frac{\partial u_i'}{\partial t} u_j' } +\overline{ \frac{\partial u_j'}{\partial t} u_i' } = \frac{\partial}{\partial t} \overline{u_i' u_j'} \\
+  \textcircled{\scriptsize 2} &: \overline{ \bar{u}_k \frac{\partial u_i'}{\partial x_k} u_j' } +\overline{ \bar{u}_k \frac{\partial u_j'}{\partial x_k} u_i' } = \bar{u}_k \frac{\partial}{\partial x_k} \overline{u_i' u_j'} \\
+  \textcircled{\scriptsize 3} &: -\overline{ \frac{1}{\rho} \frac{\partial p'}{\partial x_i} u_j' } -\overline{ \frac{1}{\rho} \frac{\partial p'}{\partial x_j} u_i' } = - \frac{1}{\rho} \Big( \overline{ \frac{\partial p'}{\partial x_i} u_j' } +\overline{ \frac{\partial p'}{\partial x_j} u_i' } \Big) \\
+  \textcircled{\scriptsize 4} &: \overline{ \frac{\partial (-u_i' u_{k'})}{\partial x_k} u_j' } +\overline{ \frac{\partial (-u_j' u_{k'})}{\partial x_k} u_i' } = -\frac{\partial}{\partial x_k} \overline{u_i' u_j' u_k'} \\
+  \textcircled{\scriptsize 5} &: \overline{ \frac{\partial (-\bar{u}_i' u_{k'})}{\partial x_k} u_j' } +\overline{ \frac{\partial (-\bar{u}_j' u_{k'})}{\partial x_k} u_i' } = -\overline{u_j' u_k'} \frac{\partial \bar{u}_i}{\partial x_k} -\overline{u_i' u_k'} \frac{\partial \bar{u}_j}{\partial x_k} \\
+  \textcircled{\scriptsize 6} &: \overline{ \frac{\partial (\overline{u_i' u_k'})}{\partial x_k} u_j' } +\overline{ \frac{\partial (\overline{u_j' u_k'})}{\partial x_k} u_i' } = 0 ~(?) \\
+  \textcircled{\scriptsize 7} &: \overline{2 \nu \frac{\partial}{\partial x_k} \Big[ \frac{1}{2} \Big( \frac{\partial u_i'}{\partial x_k} +\frac{\partial u_k'}{\partial x_i} \Big) \Big] u_j' } +\overline{2 \nu \frac{\partial}{\partial x_k} \Big[ \frac{1}{2} \Big( \frac{\partial u_j'}{\partial x_k} +\frac{\partial u_k'}{\partial x_j} \Big) \Big] u_i' } \\
+    &~~~ = \nu \frac{\partial^2}{\partial x_k^2} \overline{u_i' u_j'} -2\nu \overline{ \frac{\partial u_i'}{\partial x_k} \frac{\partial u_i'}{\partial x_k} }
+\end{align*}
+各項を一旦まとめ，置き換えられる部分を$\tau_{ij}$で書く．
+\begin{align*}
+  \frac{\partial}{\partial t} \overline{u_i' u_j'} +\bar{u}_k \frac{\partial}{\partial x_k} \overline{u_i' u_j'} &= - \frac{1}{\rho} \Big( \overline{ \frac{\partial p'}{\partial x_i} u_j' } +\overline{ \frac{\partial p'}{\partial x_j} u_i' } \Big) -\frac{\partial}{\partial x_k} \overline{u_i' u_j' u_k'} -\overline{u_j' u_k'} \frac{\partial \bar{u}_i}{\partial x_k} -\overline{u_i' u_k'} \frac{\partial \bar{u}_j}{\partial x_k} \\
+    & ~~~~+\nu \frac{\partial^2}{\partial x_k^2} \overline{u_i' u_j'} -2\nu \overline{ \frac{\partial u_i'}{\partial x_k} \frac{\partial u_i'}{\partial x_k} } \\
+    %
+  \Big( \frac{\partial}{\partial t} +\bar{u}_k \frac{\partial}{\partial x_k} \Big) \tau_{ij} &= - \frac{1}{\rho} \Big( \overline{ \frac{\partial p'}{\partial x_i} u_j' } +\overline{ \frac{\partial p'}{\partial x_j} u_i' } \Big) -\frac{\partial}{\partial x_k} \overline{u_i' u_j' u_k'} -\tau_{jk} \frac{\partial \bar{u}_i}{\partial x_k} -\tau_{ik} \frac{\partial \bar{u}_j}{\partial x_k} \\
+    & ~~~~+\nu \Big( \frac{\partial^2 \tau_{ij}}{\partial x_k^2} -2 \overline{ \frac{\partial u_i'}{\partial x_k} \frac{\partial u_i'}{\partial x_k} } \Big)
+\end{align*}
+各項を表現しなおす．
+\begin{align*}
+  左辺 &: \Big( \frac{\partial}{\partial t} +\bar{u}_k \frac{\partial}{\partial x_k} \Big) \tau_{ij} = \frac{\overline{\mathrm{D}} \tau_{ij}}{\overline{\mathrm{D}} t} \\
+  圧力項 &: \frac{1}{\rho} \overline{ p' \Big( \frac{\partial u_i'}{\partial x_j} +\frac{\partial u_j'}{\partial x_i} \Big) } -\frac{1}{\rho} \Big( \frac{\partial}{\partial x_j} \overline{u_i' p'} +\frac{\partial}{\partial x_i} \overline{u_j' p'} \Big) \\
+    &=  \frac{1}{\rho} \overline{ p' \Big( \frac{\partial u_i'}{\partial x_j} +\frac{\partial u_j'}{\partial x_i} \Big) } -\frac{\partial}{\partial x_k} \Big( \frac{1}{\rho} \overline{p'(\delta_{jk}u_i' +\delta_{ik}u_j')} \Big)
+\end{align*}
+
+以上より$\partial/\partial x_k$でまとめるとReynolds応力方程式を得る．
+\begin{align}
+  \frac{\overline{\mathrm{D}} \tau_{ij}}{\overline{\mathrm{D}} t} = -\tau_{ik} \frac{\partial \bar{u}_j}{\partial x_k} &-\tau_{jk} \frac{\partial \bar{u}_i}{\partial x_k} +\frac{1}{\rho} \overline{ p' \Big( \frac{\partial u_i'}{\partial x_j} +\frac{\partial u_j'}{\partial x_i} \Big) } -2 \nu \overline{ \frac{\partial u_i'}{\partial x_k} \frac{\partial u_i'}{\partial x_k} } \nonumber \\
+    &+\frac{\partial}{\partial x_k} \Big( -\overline{u_i' u_j' u_k'} -\frac{1}{\rho} (\overline{p'u_i'} \delta_{jk} +\overline{p'u_j'} \delta_{ik}) +\frac{\partial \tau_{ij}}{\partial x_k} \Big)
+  \label{eq:ReynoldsStressEquation_foot}
+\end{align}
+
+\begin{equation}
+  \therefore
+  \frac{\overline{\mathrm{D}} \tau_{ij}}{\overline{\mathrm{D}} t} = P_{ij} +\Pi_{ij} -\varepsilon_{ij} +\frac{\partial J_{ijk}}{\partial x_k}
+  \label{eq:ReynoldsStressEquation_Tensor} \tag{6.12}
+\end{equation}
+
+各項は，それぞれReynolds応力の
+\begin{itemize}
+ \item[-] 生成項 $P_{ij}$
+ \item[-] 圧力-ひずみ相関項(再分配項) $\Pi_{ij}$
+ \item[-] 散逸項 $\varepsilon_{ij}$
+ \item[-] (速度変動・圧力変動・粘性による)拡散項 $J_{ijk} =J_{(T)ijk} +J_{(P)ijk} +J_{(V)ijk}$
+\end{itemize}
+である．
+
+2次の変動速度相関であるReynolds応力の支配方程式にさらに高次(3次)の相関項が現れるため，この方程式は閉じていない．
+以降，3次変動速度，4次変動速度…の式を導いても，より高次の相関項が現れてしまう(乱流の完結の問題)．\\
+
+Reynolds応力方程式を「閉じた」形にするためのモデルとして，次の2つがある．
+\begin{itemize}
+ \item[-] 渦粘性モデル:~Reynolds応力自身をモデル化し，渦粘性係数を求める問題に帰着する
+ \item[-] Reynolds応力方程式モデル:~Reynolds応力方程式の高次項(圧力-ひずみ相関項$\Pi_{ij}$，散逸項$\varepsilon_{ij}$と拡散項$J_{(T)ijk}$，$J_{(P)ijk}$)をモデル化する
+\end{itemize}
+
+\subsection{渦粘性モデル}
+\label{subsec:EddyViscosityModel}
+
+「分子粘性応力$=$粘性係数$\times$速度勾配」のアナロジーから，Reynolds応力テンソルを渦粘性係数とひずみ速度テンソルの積と考える．
+\begin{equation}
+  \rho \tau_{ij} = \frac{2}{3}\delta_{ij}\rho k -2\mu_{T} \overline{D}_{ij}
+  \label{eq:EddyViscosityModel}
+\end{equation}
+
+右辺第一項は，$i=j$として総和をとったとき，左辺陶片が一致するように定めた．
+\begin{itemize}
+ \item[-] 左辺：$\rho \tau_{ii} =2\rho k$
+ \item[-] 右辺：$\frac{2}{3}\times3\rho k -0 =2\rho k$
+\end{itemize}
+この仮定をEq. 6.4に導入する．
+\begin{align}
+  \frac{\partial \bar{u}_i}{\partial t} +\frac{\partial (\bar{u}_i \bar{u}_j)}{\partial x_j} &= -\frac{1}{\rho} \frac{\partial \bar{p}}{\partial x_i} +\frac{\partial}{\partial x_j} (-\tau_{ij} +2 \nu \overline{D}_{ij}) \nonumber \\
+    &= -\frac{1}{\rho} \frac{\partial \bar{p}}{\partial x_i} +\frac{\partial}{\partial x_j} \bigl\{ -(\frac{2}{3}\delta_{ij}k -2\nu_T \overline{D}_{ij}) +2 \nu \overline{D}_{ij} \bigr\} \nonumber \\
+    &= -\frac{1}{\rho} \frac{\partial (\bar{p}+2\rho k/3 )}{\partial x_i} +\frac{\partial}{\partial x_j} \{2 (\nu +\nu_T) \overline{D}_{ij}\} \nonumber \\
+    &= -\frac{1}{\rho} \frac{\partial \bar{P}}{\partial x_i} +\frac{\partial}{\partial x_j} \{2 (\nu +\nu_T) \overline{D}_{ij}\} \tag{6.21}
+\label{eq:EddyViscosityNSEquation}
+\end{align}
+圧力にReynolds応力の等方成分が加わり，動粘性係数に\underline{渦}動粘性係数が加わった．
+結局，\underline{渦動粘性係数$\nu_T$をどうにかして既知の値から求めれば良いことになる．}
+これを定めるために考える「乱流諸量の輸送方程式」の数により，$n$方程式モデルという．
+
+\subsection{2方程式モデル}
+\label{subsec:TwoEquationModel}
+
+渦動粘性係数$\nu_T$を求めるため，\underline{2つの量の輸送方程式}を考える($\leftrightarrow$2つのパラメータから$\nu_T$を決定する)．
+パラメータとして次のようなものが考えられる．
+\begin{itemize}
+ \item[-] 変動流の運動エネルギの輸送方程式を考え，$k$(あるいはその平方根=速度)をパラメータとする．
+ \item[-] エネルギ散逸率の輸送方程式を考え，$\varepsilon$をパラメータとする．
+ \item[-] 時間の逆数である$\omega$をパラメータとする．
+\end{itemize}
+以下では最も代表的な$k-\varepsilon$モデルについて述べる．
+
+\subsubsection{$k-\varepsilon$モデル}
+\label{subsubsec:k-epsilonModel}
+
+変動流の運動エネルギ$k$とエネルギ散逸率$\varepsilon$をパラメータとする．
+
+Eq. \ref{eq:ReynoldsStressEquation_Tensor}で$i=j$として総和規約を用いることで，変動流エネルギ$k=\overline{\hat{u}_j \hat{u}_j}/2$の支配方程式が得られる．
+\begin{equation}
+  \frac{\overline{\mathrm{D}} k}{\overline{\mathrm{D}} t} = P_k -\varepsilon +\frac{\partial J_{(k)ij}}{\partial x_j}
+  \label{eq:RANS_EnergyEquation} \tag{6.30}
+\end{equation}
+\begin{align}
+  P_k &= \frac{1}{2}P_{ii} =-\tau_{ik} \frac{\partial \bar{u}_j}{\partial x_k} \tag{6.31} \\
+  \varepsilon &= \frac{1}{2} \varepsilon_{ii} = \nu \overline{\Big( \frac{\partial \bar{u}_j}{\partial x_k} \Big)^2} \tag{6.32} \\
+  J_{(k)j} &= \frac{1}{2}J_{iij} = -\overline{u_i' u_i' u_j'} -\frac{1}{\rho} \overline{p'u_k'} +\frac{\partial k}{\partial x_j} \tag{6.33~-~6.35}
+\end{align}
+$\Pi$が消えていることに注意．
+この項はエネルギの再分配に関わっている．\\
+
+$\varepsilon$の支配方程式を求める．
+Eq. \ref{eq:N-S-AveragedN-SEquation}を$x_m$で偏微分する．
+\begin{equation*}
+  \frac{\partial u_i'}{\partial t} +\bar{u}_k \frac{\partial u_i'}{\partial x_k} = -\frac{1}{\rho} \frac{\partial p'}{\partial x_i} +\frac{\partial}{\partial x_k} (-u_i' u_k' -\bar{u}_i u_k' +\tau_{ik} +2 \nu D_{ik}') \tag{6.11}
+\end{equation*}
+\begin{align*}
+  左辺 &= \Big( \frac{\partial}{\partial t} +\bar{u}_k \frac{\partial}{\partial x_k} \Big) \frac{\partial u_i'}{\partial x_m} + \frac{\partial \bar{u}_k}{\partial x_m} \frac{\partial u_i'}{\partial x_k} \\
+  右辺 &= -\frac{1}{\rho} \frac{\partial^2 p'}{\partial x_i \partial x_m} +\frac{\partial}{\partial x_k \partial x_m} (-u_i' u_k' -\bar{u}_i u_k' +\tau_{ik} +2 \nu D_{ik}') \\
+    &= -\frac{1}{\rho} \frac{\partial^2 p'}{\partial x_i \partial x_m} +\frac{\partial}{\partial x_k \partial x_m} (-u_i' u_k' +\tau_{ik}) -\frac{\partial \bar{u}_i}{\partial x_k} \frac{\partial u_k'}{\partial x_m} -\frac{\partial^2 \bar{u}_i}{\partial x_k \partial x_m} u_k' +\nu \frac{\partial^3 u_i'}{\partial x_k \partial x_k \partial x_m}
+\end{align*}
+\begin{align*}
+  \Big( \frac{\partial}{\partial t} +\bar{u}_k \frac{\partial}{\partial x_k} \Big) \frac{\partial u_i'}{\partial x_m} = &-\frac{\partial^2 \bar{u}_i}{\partial x_k \partial x_m} u_k' -\frac{\partial \bar{u}_k}{\partial x_m} \frac{\partial u_i'}{\partial x_k} -\frac{\partial \bar{u}_i}{\partial x_k} \frac{\partial u_k'}{\partial x_m} \\
+    &-\frac{\partial}{\partial x_k \partial x_m} (u_i' u_k' -\tau_{ik}) -\frac{1}{\rho} \frac{\partial^2 p'}{\partial x_i \partial x_m} +\nu \frac{\partial^3 u_i'}{\partial x_k \partial x_k \partial x_m}
+\end{align*}
+%
+これに，
+\begin{itemize}
+  \item[-] 梶島\cite{Kajishima}:~$\displaystyle{2\nu \frac{\partial u_i'}{\partial x_m} \frac{\partial}{\partial t} \Big[ \frac{\partial u_i'}{\partial x_m} \Big] }$の演算を行って，Reynolds平均を施す．
+  \item[-] 木田・柳瀬\cite{KidaYanase}:~$\displaystyle{\frac{\partial u_i'}{\partial x_m}}$を乗じ，$i$,$j$について和をとり，両辺$\nu$を掛けてアンサンブル平均する．
+\end{itemize}
+ことで$\varepsilon$の支配方程式を得る．\\
+
+\cite{KidaYanase}の方法で計算する．
+\begin{align*}
+  \Big( \frac{\partial}{\partial t} +\bar{u}_k \frac{\partial}{\partial x_k} \Big) \frac{\partial u_i'}{\partial x_m} = &-\frac{\partial^2 \bar{u}_i}{\partial x_k \partial x_m} u_{k\textcircled{\scriptsize 1}}' -\frac{\partial \bar{u}_k}{\partial x_m} \frac{\partial u_i'}{\partial x_k}_{\textcircled{\scriptsize 1}} -\frac{\partial \bar{u}_i}{\partial x_k} \frac{\partial u_k'}{\partial x_m}_{\textcircled{\scriptsize 1}} \\
+  &-\frac{\partial}{\partial x_k \partial x_m} (u_i' u_k' -\overline{u_i'u_k'})_{\textcircled{\scriptsize 2}} -\frac{1}{\rho} \frac{\partial^2 p'}{\partial x_i \partial x_m}_{\textcircled{\scriptsize 3}} +\nu \frac{\partial^3 u_i'}{\partial x_k \partial x_k \partial x_m}_{\textcircled{\scriptsize 4}}
+\end{align*}
+\begin{align*}
+  \textcircled{\scriptsize 1} &: -\frac{\partial^2 \bar{u}_i}{\partial x_k \partial x_m} u_k' \frac{\partial u_i'}{\partial x_m} -\frac{\partial \bar{u}_k}{\partial x_m} \frac{\partial u_i'}{\partial x_k} \frac{\partial u_i'}{\partial x_m} -\frac{\partial \bar{u}_i}{\partial x_k} \frac{\partial u_k'}{\partial x_m} \frac{\partial u_i'}{\partial x_m} \\
+    &~~~~ \to -2 u_k' \frac{\partial^2 \bar{u}_i}{\partial x_k \partial x_m} \frac{\partial u_i'}{\partial x_m} -2 \frac{\partial \bar{u}_i}{\partial x_k} \Big( \frac{\partial u_i'}{\partial x_m} \frac{\partial u_k'}{\partial x_m} +\frac{\partial u_m'}{\partial x_k} \frac{\partial u_m'}{\partial x_i} \Big) \\
+  \textcircled{\scriptsize 2} &: -\frac{\partial}{\partial x_k \partial x_m} (u_i' u_k' -\overline{u_i'u_k'})  \frac{\partial u_i'}{\partial x_m} \\
+    &~~~~ \to -2 \frac{\partial u_i'}{\partial x_m}  \frac{\partial u_k'}{\partial x_m}  \frac{\partial u_i'}{\partial x_k} - \frac{\partial}{\partial x_k} \Big\{ u_k' \Big(  \frac{\partial u_i'}{\partial x_m} \Big)^2 \Big\} +2 \frac{\partial u_i'}{\partial x_m}  \frac{\partial^2 \overline{u_i'u_k'}}{\partial x_m \partial x_k} \\
+  \textcircled{\scriptsize 3} &: -\frac{1}{\rho} \frac{\partial^2 p'}{\partial x_i \partial x_m} \frac{\partial u_i'}{\partial x_m} \\
+    &~~~~ \to -\frac{1}{\rho} \frac{\partial}{\partial x_i} \Big( \frac{\partial p'}{\partial x_m} \frac{\partial u_i'}{\partial x_m} \Big) \\
+  \textcircled{\scriptsize 4} &: \nu \frac{\partial^3 u_i'}{\partial x_k \partial x_k \partial x_m} \frac{\partial u_i'}{\partial x_m} \\
+    &~~~~ \to \nu \frac{\partial^2}{\partial x_k} \Big( \frac{\partial u_i'}{\partial x_m} \Big)^2 -2\nu \Big( \frac{\partial^2 u_i'}{\partial x_m \partial x_k} \Big)^2
+\end{align*}
+
+これに$\nu$を乗じアンサンブル平均を取ると，$\varepsilon$の支配方程式が得られる．(未確認)
+\begin{equation}
+  \frac{\overline{\mathrm{D}} \varepsilon}{\overline{\mathrm{D}} t} = P_\varepsilon -\Phi_\varepsilon +\frac{\partial J_{(\varepsilon)ij}}{\partial x_j}
+  \label{eq:epsilon_equation} \tag{6.39}
+\end{equation}
+\begin{align}
+  P_\varepsilon = &-2\nu \Big( \overline{\frac{\partial u_i'}{\partial x_k}\frac{\partial u_j'}{\partial x_k}} +\overline{\frac{\partial u_k'}{\partial x_i}\frac{\partial u_k'}{\partial x_j}} \Big) \frac{\partial \bar{u}_j}{\partial x_i} -2\nu \overline{u_i' \frac{\partial u_j'}{\partial x_k}} \frac{\partial^2 \bar{u}_j}{\partial x_i \partial x_k} \nonumber \\
+    &-2\nu \overline{ \frac{\partial u_j'}{\partial x_i} \frac{\partial u_j'}{\partial x_k} \frac{\partial u_i'}{\partial x_k} } \tag{6.40} \\
+  \Phi_\varepsilon = &2\nu^2 \overline{ \frac{\partial^2 u_i'}{\partial x_j \partial x_k} \frac{\partial^2 u_i'}{\partial x_j \partial x_k} } \tag{6.41} \\
+  J_{(\varepsilon)j} = &-\nu \overline{ \frac{\partial u_i'}{\partial x_k}\frac{\partial u_i'}{\partial x_k}u_j' } -\frac{\nu}{\rho} \overline{ \frac{\partial u_j'}{\partial x_i}\frac{\partial p'}{\partial x_i} } +\nu \frac{\partial \varepsilon}{\partial x_j} \tag{6.42~-~6.44}
+\end{align}
+
+以上より2パラメータ$k$，$\varepsilon$の支配方程式が得られた．
+これらの次元は$[k]=[L^2/T^2]$，$[\varepsilon]=[L^2/T^3]$である．
+
+\ref{subsec:SmagorinskyConstant}節より，渦動粘性係数の次元は$[\nu_T] =[\mathrm{L}^2/\mathrm{T}] =[\mathrm{L^4}/\mathrm{T^4}][\mathrm{T}^3\mathrm{L}^2]$と書くことができる．
+そこで，無地限定数$C_\mu$を導入し，$k$と$\varepsilon$によって次のように書ける．
+\begin{equation}
+  \nu_T = C_\mu \frac{k^3}{\varepsilon}
+  \label{eq:k-epsilon_nuT} \tag{6.38}
+\end{equation}
+
+これによって$\nu_T$を二つのパラメータで評価することができて，Eq. \ref{eq:EddyViscosityNSEquation}が閉じた．\\
+
+$k$，$\varepsilon$の支配方程式を並べる．
+\begin{align}
+  \frac{\overline{\mathrm{D}} k}{\overline{\mathrm{D}} t} &= P_k -\varepsilon +\frac{\partial J_{(k)ij}}{\partial x_j}
+  \tag{6.30} \\
+  \frac{\overline{\mathrm{D}} \varepsilon}{\overline{\mathrm{D}} t} &= P_\varepsilon -\Phi_\varepsilon +\frac{\partial J_{(\varepsilon)ij}}{\partial x_j}
+  \tag{6.39}
+\end{align}
+ここで，\underline{これらの方程式も3次以上の項を含み，Reynolds応力の方程式として閉じていない}ことに注意する．
+これを解消するため，
+拡散項$J_{(\cdot)ij}$に勾配拡散近似を導入する．
+\begin{equation}
+  J_{(\cdot)ij} = \Big( \frac{\nu_T}{\sigma_\cdot} +\nu \Big) \frac{\partial ~\cdot}{\partial x_j}
+  \label{eq:GradientDiffusionApproximation} \tag{6.37, 6.46}
+\end{equation}
+また，$\varepsilon$方程式の生産項と消滅項を一括してモデル化する．
+\begin{equation}
+  P_\varepsilon -\Phi_\varepsilon = (C_{\varepsilon1}P_k -C_{\varepsilon2}\varepsilon) \frac{\varepsilon}{k}
+  \label{eq:Modelinepsilon} \tag{6.45}
+\end{equation}
+
+以上をまとめて，$k$，$\varepsilon$の支配方程式は次のようになる．
+\begin{align}
+  \frac{\overline{\mathrm{D}} k}{\overline{\mathrm{D}} t} &= P_k -\varepsilon +\frac{\partial}{\partial x_j} \Big[ \Big( \frac{\nu_T}{\sigma_k} +\nu \Big) \frac{\partial k}{\partial x_j} \Big]
+  \tag{6.50} \\
+  \frac{\overline{\mathrm{D}} \varepsilon}{\overline{\mathrm{D}} t} &= (C_{\varepsilon1}P_k -C_{\varepsilon2}\varepsilon) \frac{\varepsilon}{k} +\frac{\partial}{\partial x_j} \Big[ \Big( \frac{\nu_T}{\sigma_\varepsilon} +\nu \Big) \frac{\partial \varepsilon}{\partial x_j} \Big]
+  \tag{6.51}
+\end{align}
+
+\printbibliography[title=参考文献]
+
+\end{document}
