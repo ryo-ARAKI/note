@@ -34,8 +34,8 @@
 % ===========================================
 % 表紙の記述
 % ===========================================
-\title{\underline{title}}
-\author{name}
+\title{\underline{ベクトル解析の公式（の導出）まとめ}}
+\author{荒木~亮}
 \date{\today}
 
 % +++++++++++++++++++++++++++++++++++++++++++
@@ -43,16 +43,138 @@
 % +++++++++++++++++++++++++++++++++++++++++++
 \begin{document}
 \maketitle
-\tableofcontents
-\clearpage
+% \tableofcontents
+% \clearpage
 
-Script is written here.
+三次元Euclid空間\(\mathbb{R}\)上で定義されたベクトル\(\vb*{A}, \vb*{B}, \dots\)を考える．
 
-% ===========================================
-% 以下，章ごとに分割されたLaTeXファイルを読み込む
-% ===========================================
-% \input{./hoge.tex}
+\begin{shadebox}
+  ベクトル\(\vb*{A}\)と\(\vb*{B}\)の外積は，
+  \begin{equation}
+    (\vb*{A} \times \vb*{B})_i = \epsilon_{ijk} A_j B_k
+  \end{equation}
+  のように書ける．
+  ここで，\(\epsilon_{ijk}\)はEddington's epsilonやLevi-Civita symbolと呼ばれるテンソルで，
+  \begin{empheq}[left={\epsilon_{ijk} = \empheqlbrace}]{align}
+    1 &\qq{if \((i,j,k)\) is an even permutation of \((1,2,3)\)} \\
+    -1 &\qq{if \((i,j,k)\) is a odd permutation of \((1,2,3)\)} \\
+    0 &\qq{else}
+  \end{empheq}
+  と定義される．
+\end{shadebox}
 
-% \printbibliography[title=参考文献]
+\begin{itembox}[l]{\(\
+  \epsilon_{ikl} \epsilon_{lmn} \
+  = \delta_{im} \delta_{kn} \
+  - \delta_{in} \delta_{km} \
+\)}
+  \begin{equation}
+    \text{L.H.S.} \
+      = \epsilon_{ik1} \epsilon_{1mn} \
+      + \epsilon_{ik2} \epsilon_{2mn} \
+      + \epsilon_{ik3} \epsilon_{3mn}
+  \end{equation}
+  ここで\((i,k) = (1,2)\)を代入してみると，
+  \begin{empheq}{align}
+    \text{L.H.S.} \
+      &= \epsilon_{121} \epsilon_{1mn} \
+      + \epsilon_{122} \epsilon_{2mn} \
+      + \epsilon_{123} \epsilon_{3mn} \\
+      &= \epsilon_{3mn} \\
+    \text{R.H.S} &= \delta_{1m} \delta_{2n} - \delta_{1n} \delta_{2m}
+  \end{empheq}
+  これはたしかに等値できる．
+  同様のことが\((i,k)\)の他の組み合わせについても成立するので，与式は成立する．\(\square\)
+\end{itembox}
+
+\begin{itembox}[l]{\(\epsilon_{ikl} \epsilon_{klm} = 2\delta_{im}\)}
+  \begin{empheq}{align}
+    \text{L.H.S.} \
+      &= -\epsilon_{ikl} \epsilon_{lkm} \\
+      &= -(\delta_{ik} \delta_{km} - \delta_{im} \delta_{kk}) \\
+      &= -(\delta_{im} - 3\delta_{im}) \\
+      &= 2\delta_{im}
+  \end{empheq}
+  より示せた．\(\square\)
+\end{itembox}
+
+\begin{itembox}[l]{\(\
+  \grad(\vb*{A} \times \vb*{B}) \
+  = \vb*{B} \vdot (\curl{\vb*{A}}) \
+  - \vb*{A} \vdot (\curl{\vb*{B}}) \
+\)}
+  成分表記で調べて，
+  \begin{empheq}{align}
+    \partial_i (\epsilon_{ijk} A_j B_k) \
+      &= B_k \epsilon_{ijk} \partial_i A_j + A_j \epsilon_{ijk} \partial_i B_k \\
+      &= B_k \epsilon_{kij} \partial_i A_j - A_j \epsilon_{jik} \partial_i B_k \\
+      &= \text{R.H.S.}
+  \end{empheq}
+  で示せた．\(\square\)
+\end{itembox}
+
+\begin{itembox}[l]{\(\
+  \grad(\vb{A} \vdot \vb*{B}) \
+  = \vb*{A} \times (\curl{\vb*{B}}) \
+  + \vb*{B} \times (\curl{\vb*{A}}) \
+  + (\vb*{B} \vdot \grad) \vb*{A} \
+  + (\vb*{A} \vdot \grad) \vb*{B} \
+\)}
+  右辺の\(i\)成分を調べて，
+  \begin{empheq}{align}
+    [\text{R.H.S.}]_i \
+      &= \epsilon_{ijk} A_j (\epsilon_{klm} \partial_l B_m) \
+      + \epsilon_{ijk} B_j (\epsilon_{klm} \partial_l A_m) \
+      + B_j \partial_j A_i \
+      + A_j \partial_j B_i \\
+      &= \epsilon_{ijk} \epsilon_{klm} (A_j \partial_l B_m + B_j \partial_l A_m) + \dots \\
+      &= (\delta_{il} \delta_{jm} - \delta_{im} \delta_{jl}) (A_j \partial_l B_m + B_j \partial_l A_m) \
+      + \dots \\
+      &=(A_j \partial_i B_j + B_j \partial_i A_j) \
+      - (A_j \partial_j B_i + B_j \partial_j A_i) \
+      + \dots \\
+      &= A_j \partial_i B_j + B_j \partial_i A_j \\
+      &= \partial_i (A_j B_j) \\
+      &= [\text{L.H.S.}]_i
+  \end{empheq}
+  より示せた．\(\square\)
+\end{itembox}
+
+\begin{itembox}[l]{\(\
+  \curl(\vb*{A} \times \vb*{B}) \
+  = \vb*{A} (\div{\vb*{B}}) \
+  - \vb*{B} (\div{\vb*{A}}) \
+  + (\vb*{B} \vdot \grad) \vb*{A} \
+  - (\vb*{A} \vdot \grad) \vb*{B} \
+\)}
+  \begin{empheq}{align}
+    [\text{L.H.S.}]_i \
+      &= \epsilon_{ijk} \partial_j (\epsilon_{klm} A_l B_m) \\
+      &= \epsilon_{ijk} \epsilon_{klm} \partial_j (A_l B_m) \\
+      &= (\delta_{il} \delta_{jm} - \delta_{im} \delta_{jl}) \partial_j (A_l B_m) \\
+      &= \partial_j (A_i B_j) \
+      - \partial_j (A_j B_i) \\
+      &= A_i \partial_j B_j \
+      + B_i \partial_j A_j \
+      - B_i \partial_j A_j \
+      - A_j \partial_j B_i \\
+      &= [\text{R.H.S.}]_i
+  \end{empheq}
+  より示せた．\(\square\)
+\end{itembox}
+
+\begin{itembox}[l]{\(\
+  \curl(\curl{\vb*{A}}) = \grad(\div{\vb*{A}}) - \laplacian \vb*{A}
+\)}
+  \begin{empheq}{align}
+    [\text{L.H.S.}]_i \
+      &= \epsilon_{ijk} \partial_j (\epsilon_{klm} \partial_l A_m) \\
+      &= \epsilon_{ijk} \epsilon_{klm} \partial_j (\partial_l A_m) \\
+      &= (\delta_{il} \delta_{jm} - \delta_{im} \delta_{jl}) \partial_j (\partial_l A_m) \\
+      &= \partial_j (\partial_i A_j) - \partial_j (\partial_j A_i) \\
+      &= \partial_i (\partial_j A_j) - \partial_j \partial_j A_i \\
+      &= [\text{R.H.S.}]_i
+  \end{empheq}
+\end{itembox}
 
 \end{document}
