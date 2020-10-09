@@ -1,0 +1,829 @@
+%日本語フォントを埋め込んだら\textbfが使えなくなった
+\documentclass[12pt,a4paper]{jsarticle}
+%
+\usepackage{bm}
+\usepackage{amsmath,amssymb}
+\usepackage{ascmac}
+\def\vector#1{\mbox{\boldmath $#1$}}
+%
+\usepackage{graphicx,color}
+\graphicspath{{../../SEM_practice/Patera/Accuracy/},{/home/ryo/Pictures/}}
+%
+%参考文献:biblatexを使う
+\usepackage[backend=bibtex, style=numeric]{biblatex}
+\addbibresource{TurbulenceModel.bib}
+%
+% \usepackage{xcolor}
+% \usepackage[draft]{graphicx}
+% \usepackage{booktabs} % 表の横罫線
+% \usepackage{lscape}  % 表などを90度回転させる
+%% 囲み枠
+% \usepackage{tcolorbox}
+\usepackage{longtable} % ページをまたぐ表の作成
+\makeatletter %式番号を章ごとに
+  \renewcommand{\theequation}{%
+  \thesection.\arabic{equation}}
+  \@addtoreset{equation}{section}
+  \renewcommand{\thefigure}{% 図番号の付け方
+	\thesection.\arabic{figure}}
+	\@addtoreset{figure}{section}
+  \renewcommand{\thetable}{% 表番号の付け方
+	\thesection.\arabic{table}}
+	\@addtoreset{table}{section}
+\makeatother
+\usepackage{subfig}
+% ソースコードをきれいに出力する
+\usepackage{listings, jlisting}
+\lstset{
+	%プログラム言語(複数の言語に対応,C,C++も可)
+ 	language = [90]Fortran,
+ 	%背景色と透過度
+ 	backgroundcolor={\color[gray]{.95}},
+ 	%枠外に行った時の自動改行
+ 	breaklines = true,
+ 	%自動開業後のインデント量(デフォルトでは20[pt])
+ 	breakindent = 10pt,
+ 	%標準の書体
+ 	basicstyle = \ttfamily,
+ 	%コメントの書体
+ 	commentstyle = {\itshape \color[cmyk]{1,0.4,1,0}},
+ 	%関数名等の色の設定
+ 	classoffset = 0,
+ 	%キーワード(int, ifなど)の書体
+ 	keywordstyle = {\bfseries \color[cmyk]{0,1,0,0}},
+ 	%""で囲まれたなどの"文字"の書体
+ 	stringstyle = {\ttfamily \color[rgb]{0,0,1}},
+ 	%枠 "t"は上に線を記載, "T"は上に二重線を記載
+	%他オプション:leftline,topline,bottomline,lines,single,shadowbox
+ % 	frame = TBrl,
+ 	%frameまでの間隔(行番号とプログラムの間)
+ 	framesep = 5pt,
+ 	%行番号の位置
+ 	numbers = left,
+	%行番号の間隔
+ 	stepnumber = 0,
+	%右マージン
+ 	%xrightmargin=0zw,
+ 	%左マージン
+	%xleftmargin=3zw,
+	%行番号の書体
+ 	numberstyle = \tiny,
+	%タブの大きさ
+ 	tabsize = 4,
+ 	%キャプションの場所("tb"ならば上下両方に記載)
+ 	captionpos = t
+}
+\renewcommand{\lstlistingname}{}
+%
+\title{スペクトル要素法を用いた\\一次元移流拡散方程式の解法}
+\author{荒木亮}
+\date{\today}
+
+\begin{document}
+%タイトル出力
+\maketitle
+%概要出力
+\begin{abstract}
+  スペクトル要素法(Spectral element method, SEM)とは，A.Patera\footnote{A spectral element method for fluid dynamics: Laminar flow in a channel expansion}によって提唱された，"有限要素法の一般性とスペクトル法の精度をあわせもつ手法\footnote{"A spectral element method that combines the generality of the finite element method with
+  the accuracy of spectral techniques"}"である．
+  本論では，この手法を用いた一次元移流拡散方程式の解法を示す．
+\end{abstract}
+
+\section{語句の定義}
+
+表 \ref{tab:words}に，本論で使用する文字とコード中での変数を対応付けして示す．
+\begin{longtable}{lll}
+  \caption[表目次用のキャプション]{使用文字\label{tab:words}}\\ \hline
+    意味 & 本論 & プログラム \\ \hline\hline
+    既知定数      & $\lambda$ & \texttt{lambda} \\ \hline
+    動粘度       & $\nu$ & \texttt{nu} \\ \hline
+    時間刻み      & $\Delta t$ & \texttt{delta\_t} \\ \hline
+    大域座標領域  & $x_{\text{O}}-x_{\text{I}}$ & \texttt{L\_global} \\ \hline
+    大域座標始点  & $x_{\text{I}}$ & \texttt{x\_{in}} \\ \hline
+    大域座標終点  & $x_{\text{O}}$ & \texttt{L\_global}$-$\texttt{x\_{in}} \\ \hline
+    要素数        & $M$ & \texttt{N\_ele} \\ \hline
+    要素内離散点数 & $N_{x}^i$ & \texttt{N\_x} \footnote{プログラム中では全ての要素で離散点数が相等しいとしている} \\ \hline
+    全離散点数    & $N_{x}^\text{all}$ &  \\ \hline
+    要素領域      & $L^i$ & \texttt{Li}  \footnote{プログラム中では全ての要素の大きさが相等しいとしている} \\ \hline
+    切断波数      & $N$ & \texttt{n\_max} \\ \hline
+    Chebyshev正変換係数 & $\beta$ & \texttt{beta} (関数) \\ \hline
+    展開係数      & $a_{n}^i$ & \texttt{an(N\_ele,0:n\_max)} \\ \hline
+    展開微係数    & $a_{n}^{(1)i}$ & \texttt{an\_1(N\_ele,0:n\_max)} \\ \hline
+    % \endfirsthead%ここまでが1ページ目のヘッダー．キャプションを含んでいるのに注意．
+    展開微係数(1ステップ前) &  & \texttt{an\_1\_old(N\_ele,0:n\_max)} \\ \hline
+    2階展開微係数  & $a_{n}^{(2)i}$ & \texttt{an\_2(N\_ele,0:n\_max)} \\ \hline
+    局所要素行列  & $B_{jk}^i$ & \texttt{B\_local(N\_ele,0:N\_x,0:N\_x)} \\ \hline
+    & $C_{jk}^i$ & \texttt{C\_local(N\_ele,0:N\_x,0:N\_x)} \\ \hline
+    大域行列     & $B_{pq}$ & \texttt{B\_global(0:N\_ele*N\_x,0:N\_ele*N\_x)} \\ \hline
+    & $C_{pq}$ & \texttt{C\_global(0:N\_ele*N\_x,0:N\_ele*N\_x)} \\ \hline
+    既知関数     & $f_{q}$ & \texttt{f\_global(0:N\_ele*N\_x)} \\ \hline
+    局所座標     & $\bar{x}_{j}^i$ & \texttt{local\_x} (関数) \\ \hline
+    大域座標     & $x_{q}$ & \texttt{x(0:N\_ele*N\_x)} \\ \hline
+    流れ場      & $u(x_{q},t)$ & \texttt{u(0:N\_ele*N\_x)} \\ \hline
+    移流方程式の解  & $\hat{u}(x_{q},t)$ & \texttt{hat\_u(0:N\_ele*N\_x)} \\ \hline
+    次の時間ステップの流れ場      & $u(x_{q},t+\Delta t)$ & \texttt{u\_next(0:N\_ele*N\_x)} \\ \hline
+    流れ場の導関数 & $\frac{\partial u}{\partial x}$ & \texttt{u\_x(0:N\_ele*N\_x)} \\ \hline
+    流れ場の2階導関数 & $\frac{\partial^2 u}{\partial x^2}$ & \texttt{u\_xx(0:N\_ele*N\_x)} \\ \hline
+\end{longtable}
+
+
+\clearpage
+\section{スペクトル要素法の基礎事項}
+\label{sec:SpectralElementMehod}
+
+\subsection{スペクトル法について}
+\label{subsec:SpectralMehod}
+スペクトル法とは，方程式に現れる複雑な関数をより簡単な性質を持つ展開関数で級数近似し，計算する手法である．
+流体力学においては流れ場$\vector{u}(\vector{x},t)$や圧力場$p(\vector{x},t)$についての方程式を解くことになる．
+そのため，これらの量を関数展開することになる．
+
+本論では流れ場のみ考える．
+展開係数を$\vector{a}(\vector{k},t)$，展開関数を$\vector{f}(\vector{k},\vector{x})$とし，この積の波数についての足しあわせとして$\vector{u}(\vector{x},t)$を定義する．
+\begin{equation}
+  \vector{u}(\vector{x},t) = \sum_{\vector{k}} \vector{a} (\vector{k},t) \vector{f} (\vector{k},\vector{x})
+\label{eq:DefofSpectral}
+\end{equation}
+
+数値計算手法として最も一般的な差分法では，問題が定義されている領域を有限の離散点に分割し，その点での関数値を直接評価する．
+これに対しスペクトル法では，同じく有限の離散点上で関数を評価するものの，これを展開関数の足し合わせで間接的に評価するという違いがある．\\
+
+一般に，差分法に対してスペクトル法は高精度である．
+これは，関数の微分の精度が両手法で異なることによる．
+
+例として，ある関数$y(x)$の導関数$y'(x)$の精度を評価することを考える．
+定義域を$x \in [0,1]$として，これを$J+1$点で離散化する．
+\begin{equation}
+  x_{j} = j \Delta x, ~~~(j=0,1, \dots, J), ~~~~ \Delta x = \frac{1}{J}
+\label{eq:ExampleFunction}
+\end{equation}
+
+関数$y(x)$の離散点上の値を次のように書く．
+\begin{equation}
+  y_{j} = y(x_{j})
+\label{eq:ExampleDiscreteFunction}
+\end{equation}
+
+差分法によりこの微分を評価する．
+\begin{align}
+  \frac{\mathrm{d} y_{j}}{\mathrm{d} x} &= \frac{y_{j+1}-y_{j}}{\Delta x} \\
+    &= \frac{y_{j}-y_{j-1}}{\Delta x} \\
+    &= \frac{y_{j+1}-2y_{j} +y_{j-1}}{(\Delta x)^2}
+\label{eq:ExampleDerivativeofFunction}
+\end{align}
+
+以上3式はそれぞれ前進差分，後退差分，中心差分による評価であり，精度は$\mathcal{O}(\Delta x),\mathcal{O}(\Delta x),\mathcal{O}(\Delta x)^2$となる．
+これは$y(x)$の$x_{j}$周りでのTaylor展開を評価することで計算できる．
+
+続いて，スペクトル法で計算した導関数を考える．
+展開関数としてFourier級数を選ぶ．
+\begin{equation}
+  y(x_{j}) = \sum_{k} a(k) \mathrm{exp}(\mathrm{i}kx)
+\label{eq:ExampleSpectralFunction}
+\end{equation}
+
+このとき，導関数$y'(x_{j})$は次式で計算できる．
+\begin{equation}
+  \frac{\mathrm{d} y_{j}}{\mathrm{d} x} = \sum_{k} a'(k) \mathrm{exp}(\mathrm{i}kx), ~~~a'(k) = \mathrm{i}k a(k)
+  \label{eq:ExampleSpectralDerivaiveofFunction}
+\end{equation}
+
+以上より，スペクトル法において微分は展開係数の変更として計算できることが分かる．
+もちろん，スペクトル法においても打切波数や展開関数の種類によって誤差が生じるが，それは差分法のように大きなものではない．
+
+
+\subsection{Chebyshev多項式を用いたスペクトル法について}
+\label{subsec:ChebyshevSpectralMehod}
+展開関数としてよく用いられるのは前節でも用いたFourier級数であるが，本論では次式で定義されるChebyshev多項式を用いる．
+\begin{align}
+  T_{n}(x) &= \frac{(-1)^n}{(2n-1)\!\!} \sqrt{1-x^2} \frac{\mathrm{d}^n}{\mathrm{d}x^n} (a-x^2)^{n-\frac{1}{2}} \nonumber \\
+           &= \cos(n\theta) ~~~~~~~~(x = \cos \theta)
+\label{eq:DefofChebyshev}
+\end{align}
+
+重要な特徴として直交性がある．
+\begin{align}
+  \frac{1}{\pi} \int_{x_{\text{I}}}^{x_{\text{O}}} T_{m}(x) T_n{(x)} \frac{1}{\sqrt{1-x^2}} ~\mathrm{d}x =\left\{ \begin{array}{ll}
+  0 &   (m \ne n) \\
+  1/2 & (m = n \ne 0) \\
+  1 &   (m = n = 0) \\
+\end{array} \right.
+\label{eq:OrthogonalofChebyshev}
+\end{align}\\
+
+Chebyshev多項式$T_{n}(x)$を用いて一次元の流れ場$u(x,t)$の関数展開を定義する．
+\begin{equation}
+  u(x,t) = \sum_{n=0}^{\infty} a_{n}(t) T_{n}(x)
+\label{eq:DefofChebyshevExpansion}
+\end{equation}
+
+Chebyshevスペクトル法では，この展開係数$a_{n}(t)$を時間発展させてゆくことで流れ場の時間発展を記述する．
+本論では，\ref{sec:Advection_Diffusion}章において一次元移流拡散方程式を対称に時間発展スキームを調べる．\\
+
+関数展開された流れ場Eq. \ref{eq:DefofChebyshevExpansion}に境界条件を与えることを考える．
+ここではTau法を使用する．
+これは，流れ場に適用する境界条件の数だけ級数の項を減らし，そこに境界条件を「押し付ける」ものである．
+例えばEq. \ref{eq:DefofChebyshevExpansion}について切断波数を$N$とし，
+\begin{equation}
+  u(-1,t) = \sin \pi t
+\label{eq:BCofChebyshevExpansion}
+\end{equation}
+なる境界条件を定めるとする．
+\begin{align*}
+  u(-1,t) &= \sum_{n=0}^{N} a_{n}(t) T_{n}(-1) \\
+          &= \sum_{n=0}^{N} a_{n}(t) (-1)^n \\
+  \therefore \sin \pi t
+    &= \sum_{n=0}^{N} a_{n}(t) (-1)^n \\
+    &= \sum_{n=0}^{N-1} a_{n}(t) (-1)^n +a_{N}(t) (-1)^N
+\end{align*}
+これを$a_{N}(t)$について解くことで，最高次の展開係数に境界条件を押し付けることができる．
+\begin{equation}
+  a_{N}(t) = \frac{1}{(-1)^N} \Big( \sin \pi t -\sum_{n=0}^{N-1} a_{n}(t) (-1)^n \Big)
+  \label{eq:BCofChebyshevExample}
+\end{equation}
+
+
+\subsection{Chebyshev多項式を用いたスペクトル要素法について}
+\label{subsec:ChebyshevSpectralElementMehod}
+
+ここまで，問題で定義された領域全体にわたって1つの展開関数を使用していた．
+実際に3次元Navier-Stokes方程式をスペクトル法で解くことを考えると，
+単純な領域，例えば周期境界条件をもつ立方体ならば，スペクトル法は非常に高精度である．
+しかし，より複雑な形状や境界条件をもつ流れ場に対し，流速の各成分を1つの展開係数で表すのはきわめて困難である．
+
+そこで，定義された「領域(domain)」をより小さな「要素(elements)」に分解し，各要素内の離散点において独立に関数展開することを考える．
+単純に領域を要素に分割する手法をマルチ要素スペクトル法(Multi-domain spectral method)と呼ぶ．
+しかし，この手法では要素境界での連続条件を満たすように追加の境界条件を与えなければならない．
+これらは本来の方程式に存在しなかった境界条件であるから，アルゴリズムが複雑になる，精度が悪くなるなどの欠点をもつ．
+
+これを克服するため，領域の要素への分割に有限要素法(Finite element method, FEM)の考え方を導入する．
+このようなスペクトル法と有限要素法を融合させた手法をスペクトル要素法(Spectral element method)と呼ぶ．
+FEMの考え方を導入することにより，要素境界の取り扱いおよび複雑形状領域の要素への分割がきわめて簡単になる．\\
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{itembox}[l]{Todo}
+  \textbf{Galerkin projection, weak form, direct stiffness method, variational principle→spectral element approximation}についてもっと勉強し，簡潔にまとめる．
+\end{itembox}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+\clearpage
+\section{1次元移流拡散方程式}
+\label{sec:Advection_Diffusion}
+次式で定義する移流拡散方程式を解くことを目指す．
+\begin{align}
+  \frac{\partial u(x,t)}{\partial t} + \frac{\partial u(x,t)}{\partial x} &= \nu \frac{\partial^2 u(x,t)}{\partial x^2}, ~~~~~~~~(-\infty < x < \infty)
+  \label{eq:DefofAdvectionDiffusion} \\
+  u(x,0) &= \mathrm{e}^{-2x^2}
+  \label{eq:ICofAdvectionDiffusion}
+\end{align}
+
+ただし，$x \in \mathbb{R}$の領域を数値計算で解くことは不可能である．
+そこで，問題を適当な区間$x \in [x_{\text{I}}, x_{\text{O}}]$に制限する．
+この領域制限に対応する追加の境界条件を次式で定義する．
+\begin{align}
+  u(x_{\text{I}},t) &= 0
+  \label{eq:DirichletBCofAdvectionDiffusion} \\
+  \frac{\partial u}{\partial x}(x_{\text{O}},t) &= 0
+  \label{eq:NeumannBCofAdvectionDiffusion}
+\end{align}
+流入側にはDirichlet，流出側にはNeumann境界条件を課す．
+Eq. \ref{eq:ICofAdvectionDiffusion}とEq. \ref{eq:DirichletBCofAdvectionDiffusion}から分かるように，$x_{\text{I}}$は初期条件に影響しない程度に小さくとらなければならない．\\
+
+Eq. \ref{eq:DefofAdvectionDiffusion}を時間発展させるアルゴリズムの概要をまとめておく．
+$n$時間ステップ目は$t = n \Delta t$と同値である．
+
+第$n$ステップから第$n+1$ステップへの時間発展を考える．
+移流拡散方程式を移流項と拡散項に分けて解く．
+\begin{align}
+  \frac{\hat{u}^{n+1} -u^n}{\Delta t} &= -\frac{3}{2} \Big( \frac{\partial u}{\partial x} \Big)^n +\frac{1}{2} \Big( \frac{\partial u}{\partial x} \Big)^{n-1}
+  \label{eq:TimeIncrementofAdvection} \\
+  \frac{u^{n+1} -\hat{u}^{n+1}}{\Delta t} &= \frac{\nu}{2} \Bigl\{ \Big( \frac{\partial^2 u}{\partial x^2} \Big)^{n+1} +\Big( \frac{\partial^2 u}{\partial x^2} \Big)^{n} \Bigr\}
+  \label{eq:TimeIncrementofDiffusion}
+\end{align}
+移流項は陽解法であるAdams-Bashforth法，拡散項は陰解法であるCrank-Nicolson法を用いる．
+
+次節より，以上の式の具体的な解法を述べる．
+
+
+\subsection{座標系}
+\label{sec:Coordinate_System}
+大域座標$[x_{\text{I}}, x_{\text{O}}]$を$M$の要素に分割し，$i$番目の要素を$N_{x}^{i}+1$の離散点で補間することを考える．
+各要素を$x^i \in [a^i, b^i]$で定義する．
+\begin{align}
+  [x_{\text{I}}, x_{\text{O}}] &= [a^1, b^1] \cup [a^2, b^2] \cup \cdots \cup [a^i, b^i] \cup \cdots \cup [a^M, b^M] \nonumber \\
+  &= \bigcup_{i=1}^{M} [a^i, b^i], ~~~~~~~~(a^1 = x_{\text{I}}, b^M = x_{\text{O}})
+  \label{eq:PartitionofGlobalCoor}
+\end{align}
+
+この様子をFig. \ref{fig:Division_GlobalCoordinate}に示す．
+\begin{figure}[h]
+  \centering
+  \includegraphics[bb=0.000000 0.000000 1356.000000 238.000000,width=10cm]{Division_GlobalCoordinate.png}
+  \caption{大域座標の分割}
+  \label{fig:Division_GlobalCoordinate}
+\end{figure}
+
+$i$番領域の開始点$a^i$は，「領域開始点$+(i-1)$番要素が覆う距離」として定義できる．
+いま，各要素について$[a^i, b^i]$は必ずしも等しくない．
+これを$L^i$と書くことにする．
+\begin{align}
+  a^i &= a^1 +\sum_{j=1}^{i-1} (b^j -a^j) \nonumber \\
+      &= a^1 +\sum_{j=1}^{i-1} L^j
+  \label{eq:Defofai}
+\end{align}
+大域座標を$M$の要素に「等分する」とすると，$L^i$をより直観的に書くことができる．
+\begin{align}
+  L^i &= \frac{x_{\text{O}} -x_{\text{I}}}{M} \nonumber \\
+      &= \frac{b^M -a^1}{M}
+  \label{eq:DefofLi}
+\end{align}
+このときEq. \ref{eq:Defofai}をより明示的に書くことができる．
+\begin{align}
+  a^i &= x_{\text{I}} +\sum_{j=1}^{i-1} L^j \nonumber \\
+      &= a^1 +(i-1) \frac{b^M -a^1}{M} \nonumber \\
+      &= \Big( 1-\frac{i-1}{M} \Big) a^1 +\frac{i-1}{M} b^M
+  \label{eq:Defofai_equally}
+\end{align}
+これで，大域座標を$M$この自由な要素に分割することができた．\\
+
+続いて，各要素内での局所座標の取り扱いを考える．
+$i$番要素での局所座標を$\bar{x}^i$と書く．
+$\bar{x}^i \in [-1,1]$である．
+
+これを$\cos$を用いて$N_{x}^i+1$点に離散化する．
+\begin{equation}
+  \bar{x}_{j}^i = \cos \frac{\pi j}{N_{x}^i}, ~~~(j = 0, 1, \dots N_{x}^i)
+  \label{eq:InterpolantofLocalCoordinate}
+\end{equation}
+
+この様子をFig. \ref{fig:Interpolant_LocalCoordinate}に示す．
+\begin{figure}[h]
+  \centering
+  \includegraphics[bb=0.000000 0.000000 1356.000000 444.000000,width=10cm]{Interpolant_LocalCoordinate.png}
+  \caption{要素の離散点による補完}
+  \label{fig:Interpolant_LocalCoordinate}
+\end{figure}
+
+局所座標$\bar{x}^i \in [-1,1]$に対応する大域座標は$x \in [a^i, b^i] = [a^i, a^i+L^i]$である．
+これら2座標系の対応を次式に示す．
+\begin{equation}
+  \bar{x}_{j}^i = \frac{2}{L^i} (x_{q}-a^i) -1
+  \label{eq:ConnectLocalGlobalCoordinate}
+\end{equation}
+ただし，両座標の定義域について以下のように確かめられる．
+\begin{align*}
+  x &\in [a^i, a^i+L^i] \\
+  x-a^i &\in [0, L^i] \\
+  \frac{1}{L^i} (x-a^i) &\in [0,1] \\
+  \frac{2}{L^i} (x-a^i) &\in [0,2] \\
+  \therefore \frac{2}{L^i} (x-a^i)-1 &\in [-1,1].
+\end{align*}\\
+
+Eq. \ref{eq:ConnectLocalGlobalCoordinate}を離散点で表す．
+\begin{equation}
+  \bar{x}_{j}^i = \frac{2}{L^i} (x_{q}-a^i) -1
+  \label{eq:ConnectDiscreteLocalGlobalCoordinate}
+\end{equation}
+
+ただし大域座標のナンバリング$q$は次式で定義される．
+\begin{equation}
+  q = \sum_{l=1}^{i-1} N_{x}^{l} +j
+  \label{eq:DefofqofGlobalCoordinate}
+\end{equation}
+
+これは，大域座標で考える$i$番要素の$N_{x}^i$番座標$\bar{x}_{N_{x}^i}^i$と$i+1$番要素の$0$番座標$\bar{x}_{0}^{i+1}$が重なることによる．
+\begin{equation}
+  \bar{x}_{N_{x}^i}^i = \bar{x}_{0}^{i+1}
+  \label{eq:OverlapofElements}
+\end{equation}
+
+また，Eq. \ref{eq:DefofqofGlobalCoordinate}について，離散点数$N_{x}^i$が全ての要素で相等しいとき，これを$N_x$としてより簡単に$q$を表せる．
+\begin{equation}
+  q = (i-1) N_x +j
+  \label{eq:DefofqofGlobalCoordinateSpecial}
+\end{equation}
+
+ここで，全離散点数$N_{x}^\text{all}$を定義しておく．
+\begin{align}
+  N_{x}^\text{all} &= \sum_{l=1}^{M} N_{x}^{l} +1 \\
+                   &= M N_{x} +1 ~~~(\text{only if } N_{x}^i \text{ is always equal} )
+\label{eq:DefofTotalInterpolantNumber}
+\end{align}
+
+
+\subsection{スペクトル要素法における正/逆Chebyshev変換}
+\label{subsec:SpectralChebyshevTransform}
+
+スペクトル要素法における物理空間とChebyshev空間の変換を示す．
+物理空間$\rightarrow$Chebyshev空間への変換をChebyshev(正)変換と呼ぶ．
+Chebyshev正変換によって定まる$i$番要素の$n$次展開係数$a_{n}^i$は，
+\begin{equation}
+  a_{n}^i = \sum_{j=0}^{N_{x}^i} \beta_{n,j} u(q) T_{n}(\bar{x}_{j}^i)
+\label{eq:DefofPositiveChebyshev}
+\end{equation}
+\begin{align}
+\beta_{n,j} =\left\{ \begin{array}{ll}
+  1/4 & (n=0, j=0 ~\mathrm{or}~ N_{x}^i) \\
+  1/2 & (n=0, j: ~\mathrm{else}) \\
+  1/2 & (n \ne 0, j=0 ~\mathrm{or}~ N_{x}^i) \\
+  1   & (n \ne 0, j: ~\mathrm{else}) \\
+\end{array} \right.
+\label{eq:DefofBeta}
+\end{align}
+で定まる．
+係数$\beta$について文章で書くと，「要素端点で0.5，それ以外で1．ただし0モードのみにおいてそれぞれ半分とする．」となる．
+
+\begin{itembox}[l]{Chebyshev多項式の実装について}
+  Chebyshev多項式$T_{n}(\bar{x}_{j}^i))$について$j=0$から$j=N_{x}^i$まで反復計算することを考える．
+  \begin{lstlisting}[caption=,label=code:ChebyshevPolynomials]
+     do j = 0, N_x
+      Tn(j) = cos(dble(n)*x(j))
+     end do
+  \end{lstlisting}
+  このようにすると，$j=0$で$\bar{x}_{j}^i=1$，$j=N_{x}^i$で$\bar{x}_{j}^i=-1$と出力される．
+  これは\ref{sec:Coordinate_System}節で定義される局所座標系の定義と異なる．
+  そのため，コード上では$i$番要素の$j$番離散点について，Chebyshev多項式を定義はそのままに
+  \begin{lstlisting}[caption=,label=code:ImplementofChebyshevPolynomials]
+  do j = 0, N_x
+  Tn(j) = cos(dble(n)*x(N_x-j))
+  end do
+  \end{lstlisting}
+  と実装している．
+  こうすることで$j=0$で$\bar{x}_{j}^i=-1$，$j=N_{x}^i$で$\bar{x}_{j}^i=1$となり，局所座標系の定義と上手くあう．
+\end{itembox}\\
+
+次に，Chebyshev空間$\rightarrow$物理空間への変換をChebyshev逆変換と呼び，次式で定義する．
+\begin{equation}
+  u_{q} = \sum_{i=1}^{M} \sum_{n=0}^N a_{n}^{i} T_{n}(\bar{x}_{j}^i)
+\label{eq:DefofInverseChebyshev}
+\end{equation}
+
+ただし，Eq. \ref{eq:DefofInverseChebyshev}では要素境界で値を二重に計算してしまっている．
+これは，Eq. \ref{eq:OverlapofElements}で分かるように$i$番要素の$N_{x}^i$番点と$i+1$番要素の$0$番点が大域座標では同じ点を指しているためである．
+よって，各要素の境界点で値を半分にすることで連続を保っている．
+
+なお，導関数におけるこの処理がPatera(1984) Eq. (11)の$\alpha_{-}=\alpha_{+}=1/2$の実装となる．\\
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{itembox}[l]{\textbf{Patera(1984) Eq. (11)}は何を意味しているか?}
+  関数，導関数，2階導関数にかかわらずEq. \ref{eq:DefofInverseChebyshev}では要素境界を二重に計算することになる．
+  そのため，要素境界点での再評価はいずれにおいても必要なはず．
+  なぜ導関数のみについてこの処理が明示的に書かれているのか???
+\end{itembox}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+\subsection{移流方程式}
+\label{sec:Advection_Equation}
+以下，Eq. \ref{eq:TimeIncrementofAdvection}で与えられている移流項の時間発展を考える．
+
+各時間ステップで速度場は物理空間で与えられる．
+これを，\ref{subsec:SpectralChebyshevTransform}節に基づいて展開係数に変換する．
+ここでは境界条件を与えないことに注意する．\\
+
+速度場の導関数の展開係数(微係数)を計算する．
+石岡(2005)より，$i$番要素の$n$次微係数$a_{n}^{(1)i}$は次の漸化式で高次より順に計算することができる．
+\begin{equation}
+  a_{n}^{(1)i} = \alpha_{n} \{ a_{n+2}^{(1)i} +2(n+1)a_{n+1}^{i} \}
+  \label{eq:DefofDerivativeCoefficient}
+\end{equation}
+\begin{align}
+\alpha_{n} =\left\{ \begin{array}{ll}
+  1/2 & (n=0,N) \\
+  1  & (\mathrm{else}) \\
+\end{array} \right.
+\label{eq:DefofAlpha}
+\end{align}
+
+ただし最高次の微係数は常に0である．
+\begin{equation}
+  a_{N}^{(1)i} = 0
+  \label{eq:DefofMaximumDerivativeCoefficient}
+\end{equation}\\
+
+以上より$n$時間ステップ($\leftrightarrow t = n \Delta t$)における展開係数，展開微係数を計算できる．
+これらを用いて次の時間ステップの展開係数を計算する．
+
+ただし，Adams-Bashforth法では$n-1$時間ステップでの展開微係数も必要となる．
+1ステップ目においてこの情報は存在しないため，代わりにEuler法を用いる．
+2ステップ目以降はAdams-Bashforth法で計算する．
+
+1ステップ目：
+\begin{align}
+  \frac{u^2 -u^1}{\Delta t} &= \Big( \frac{\partial u}{\partial x} \Big)^{1} \nonumber \\
+  \therefore a_{n}^i (\Delta t) &= a_{n}^i (0) +\Delta t ( a_{n}^{(1)i}(0) )
+\label{eq:Timeincrement_Advection_Euler}
+\end{align}
+
+2ステップ目以降：Eq. \ref{eq:TimeIncrementofAdvection}より
+\begin{align}
+  u(x,t+\Delta t)^{n+1} &= u(x,t)^{n} +\Delta t \Bigl\{ -\frac{3}{2} \Big( \frac{\partial u}{\partial x} \Big)^{n} +\frac{1}{2} \Big( \frac{\partial u}{\partial x} \Big)^{n-1} \Bigr\} \nonumber \\
+  \therefore a_{n}^i (t+\Delta t) &= a_{n}^i (t) +\Delta t \Big( -\frac{3}{2} a_{n}^{(1)i}(t) +\frac{1}{2} a_{n}^{(1)i}(t-\Delta t) \Big)
+\label{eq:Timeincrement_Advection_AdamsBashforth}
+\end{align}
+
+物理量の上付き添字$n$は時間ステップを表し，展開係数の下付き添字$n$は波数を表すことに注意する\footnote{誤解を招かないよう統一したい}．\\
+
+これを$(0 \le i \le M)$，$(0 \ge n \le N-1)$について反復することで，「次の時間ステップでの最高次以外の展開係数」を求めることができる．
+最高波数(切断波数，打切波数)について計算していないのは，\ref{subsec:ChebyshevSpectralMehod}節で考察した境界条件のためである．
+
+これに基づいて，Tau法で境界条件を適用する．
+ここでは流入側境界条件(Dirichlet条件)Eq. \ref{eq:DirichletBCofAdvectionDiffusion}のみ設定すればよい\footnote{移流項でもHelmholtz方程式でも流入側のみ境界条件を与えている...}.
+流入側(=1番要素)にのみDirichlet条件を課せば良いので，次式のようになる．
+\begin{align}
+  u(x_{\text{I}})^{n+1} &= 0 \nonumber \\
+  \therefore a_{N}^1 (t+\Delta t) &= \sum_{n=0}^{N-1} a_{n}^1 (t+\Delta t) \times (-1)^N
+\label{eq:BCofAdvection}
+\end{align}
+
+
+
+\subsection{Helmholtz方程式}
+\label{sec:Helmholtz_Equation}
+
+拡散方程式の時間発展について考える．
+Eq. \ref{eq:TimeIncrementofDiffusion}，境界条件Eq. \ref{eq:DirichletBCofAdvectionDiffusion}，\ref{eq:NeumannBCofAdvectionDiffusion}を再掲する．
+\begin{equation*}
+  \frac{u^{n+1} -\hat{u}^{n+1}}{\Delta t} = \frac{\nu}{2} \Bigl\{ \Big( \frac{\partial^2 u}{\partial x^2} \Big)^{n+1} +\Big( \frac{\partial^2 u}{\partial x^2} \Big)^{n} \Bigr\}
+\end{equation*}
+\begin{align*}
+  u(x_{\mathrm{I}},t) &= 0 \\
+  \frac{\partial u}{\partial x}(x_{\mathrm{O}},t) &= 0
+\end{align*}\\
+これをHelmholtz方程式に変換して解くことを考える．
+\begin{equation}
+  \Big( \frac{\partial^2 u}{\partial x^2} \Big)^{n+1} -\frac{2}{\nu \Delta t} u^{n+1} = -\frac{2}{\nu \Delta t} \hat{u}^{n+1} -\Big( \frac{\partial^2 u}{\partial x^2} \Big)^{n}
+\label{eq:ConversiontoHelmholtzfromDiffusion}
+\end{equation}
+既知の右辺を$f$，定数を$\lambda^2$とおくことでEq. \ref{eq:ConversiontoHelmholtzfromDiffusion}は次式のように書ける．
+\begin{equation}
+  \Big( \frac{\partial^2 u}{\partial x^2} \Big)^{n+1} -\lambda^2 u^{n+1} = f
+  \label{eq:HelmholtzofDiffusion}
+\end{equation}
+ここで，右辺は移流項の時間発展を計算した時点で既知の値である．
+\begin{align}
+  \lambda &= \sqrt{\frac{2}{\nu \Delta t}} \\
+  f &= -\lambda^2 \hat{u}^{n+1} -\Big( \frac{\partial^2 u}{\partial x^2} \Big)^{n}
+\label{eq:Lambda_fofHelmholtz}
+\end{align}
+
+$f$に現れる速度場の二階導関数の展開係数$a_{n}^{(2)i}$は，一階導関数の展開係数$a_{n}^{(1)i}$と同じ漸化式Eq. \ref{eq:DefofDerivativeCoefficient}から計算できる．
+ただし，今回は最高次から2次の展開係数が常に0となる．
+\begin{equation}
+  a_{N}^{(2)i} = a_{N-1}^{(2)i} = 0
+  \label{eq:DefofMaximumSecondDerivativeCoefficient}
+\end{equation}\\
+
+ここで，Helmholtz方程式をスペクトル要素法で近似するためにはこの解と同値な変分原理が存在する必要がある\footnote{\ref{subsec:ChebyshevSpectralElementMehod}節にここを調べて書く}．
+そのような変分原理は次のような言明で定義できる．
+\begin{align*}
+  \mathrm{Find} ~~ &u(x) ~~\mathrm{s.t.} \\
+  &\delta I = 0, ~~ I = \int_{x_{\text{I}}}^{x_{\text{O}}} \Bigl[ -\frac{1}{2} \Big( \frac{\mathrm{d} u}{\mathrm{d} x} \Big)^2 - \frac{\lambda^2}{2} u^2 -uf \Bigr] ~\mathrm{d}x
+  \label{eq:DefofVariationalPrinciple}
+\end{align*}
+
+まず，この言明と方程式が同値であることを示す．
+汎関数$U$を次のように定義する．
+\begin{equation}
+  U \Big( u, \frac{\partial u}{\partial x} \Big) = -\frac{1}{2} \Big( \frac{\partial u}{\partial x} \Big)^2 - \frac{\lambda^2}{2} u^2 -uf
+  \label{eq:DefofFunctional}
+\end{equation}
+これによって作用$I$を定義する．
+\begin{equation}
+  I = \int_{x_{\text{I}}}^{x_{\text{O}}} U \Big( u, \frac{\partial u}{\partial x} \Big) ~\mathrm{d}x
+  \label{eq:DefofAction}
+\end{equation}
+
+作用$I$の変分$\delta I$を計算する．
+\begin{align*}
+  \delta I &= \int_{x_{\text{I}}}^{x_{\text{O}}} \Bigl[ U +\delta U \Bigr] ~\mathrm{d}x - \int_{x_{\text{I}}}^{x_{\text{O}}} U ~\mathrm{d}x \\
+  &= \int_{x_{\text{I}}}^{x_{\text{O}}} \delta U ~\mathrm{d}x \\
+  &= \int_{x_{\text{I}}}^{x_{\text{O}}} \Bigl[ \frac{\partial U}{\partial u} \delta u + \frac{\partial U}{\partial \Big( \frac{\partial u}{\partial x} \Big)} \delta \Big( \frac{\partial u}{\partial x} \Big) \Bigr] ~\mathrm{d}x \\
+  &= \int_{x_{\text{I}}}^{x_{\text{O}}} \Bigl[ \frac{\partial U}{\partial u} - \frac{\partial u}{\partial x} \frac{\partial U}{\partial \Big( \frac{\partial u}{\partial x} \Big)} \Bigr] \delta u ~\mathrm{d}x
+\end{align*}
+ただし以下の部分積分の関係を用いる．
+\begin{align*}
+  \int_{x_{\text{I}}}^{x_{\text{O}}} \frac{\partial U}{\partial \Big( \frac{\partial u}{\partial x} \Big)} \delta \Big( \frac{\partial u}{\partial x} \Big) ~\mathrm{d}x
+  &= \int_{x_{\text{I}}}^{x_{\text{O}}} \frac{\partial U}{\partial \Big( \frac{\partial u}{\partial x} \Big)} \frac{\partial (\delta u)}{\partial x} ~\mathrm{d}x \\
+  &= \Bigl[ \frac{\partial U}{\partial \Big( \frac{\partial u}{\partial x} \Big)} \delta u \Bigr]_{-1}^{1} -\int_{x_{\text{I}}}^{x_{\text{O}}} \frac{\partial}{\partial x} \Bigl[ \frac{\partial U}{\partial \Big( \frac{\partial u}{\partial x} \Big) } \Bigr] \delta u ~\mathrm{d}x \\
+  &= 0 -\int_{x_{\text{I}}}^{x_{\text{O}}} \frac{\partial}{\partial x} \Bigl[ \frac{\partial U}{\partial \Big( \frac{\partial u}{\partial x} \Big) } \Bigr] \delta u ~\mathrm{d}x
+\end{align*}
+ここで，$\delta u(x_{\text{I}}) = \delta u(x_{\text{O}}) = 0$なる関係は変分の両端が停留するという要請より導かれた\footnote{これはもともとの問題の境界条件Eq. \ref{eq:DirichletBCofAdvectionDiffusion}，\ref{eq:NeumannBCofAdvectionDiffusion}と異なる．論文では同値だった…}．
+
+以上より作用の変分$\delta I$についてまとめると，Helmholtz方程式が現れる．
+\begin{align*}
+  \delta I &= \int_{x_{\text{I}}}^{x_{\text{O}}} \Bigl[ \frac{\partial U}{\partial u} - \frac{\partial}{\partial x} \frac{\partial U}{\partial \Big( \frac{\partial u}{\partial x} \Big)} \Bigr] \delta u ~\mathrm{d}x \\
+  &= \int_{x_{\text{I}}}^{x_{\text{O}}} \frac{\partial U}{\partial u} \delta u ~\mathrm{d} x - \int_{x_{\text{I}}}^{x_{\text{O}}} \frac{\partial}{\partial x} \frac{\partial U}{\partial \Big( \frac{\mathrm{d} u}{\mathrm{d} x} \Big)} \delta u ~\mathrm{d} x \\
+  &= \int_{x_{\text{I}}}^{x_{\text{O}}} \Bigl[ -\lambda^2 u -f \Bigr] - \int_{x_{\text{I}}}^{x_{\text{O}}}  \frac{\partial}{\partial x} \Bigl[ -\frac{\partial u}{\partial x} \Bigr] \delta u ~\mathrm{d} x \\
+  &= \int_{x_{\text{I}}}^{x_{\text{O}}} \Bigl[ \frac{\partial^2 u}{\partial x^2} -\lambda^2 u -f \Bigr] \delta u ~\mathrm{d} x
+\end{align*}
+
+よって，Helmholtz方程式の解が見つかる($\Longleftrightarrow u_{xx} -\lambda^2 u -f \Bigr] \delta u ~\mathrm{d} x = 0$が成立する)とき，作用の変分が0となる($\Longleftrightarrow \delta I = 0$)．
+
+以上よりHelmholtz方程式をスペクトル要素近似することが許された．\\
+
+Helmholtz方程式について要素方程式(The elemental equations)を次式で定める．
+\begin{equation}
+  C_{jk}^i u_{k}^i = B_{jk}^i f_{k}^i
+  \label{eq:DefofElementalEquation}
+\end{equation}
+下付き添字のみ総和規約を用いることに注意する．
+
+要素行列は以下より定める．
+\begin{equation}
+  C_{jk}^i u_{k}^i = A_{jk}^i -\lambda^2 B_{jk}^i
+  \label{eq:DefofCjk}
+\end{equation}
+\begin{align}
+  A_{jk}^i &= \frac{-2}{L^i (N_{x}^i)^2} \tilde{A}_{jk}^i, \\
+  \tilde{A}_{jk}^i &= \frac{4}{\bar{c}_{j}\bar{c}_{k}} \sum_{n=0}^{N_{x}^i} \sum_{m=0}^{N_{x}^i} \frac{1}{\bar{c}_{n}\bar{c}_{m}} T_{n}(\bar{x}_j^i) T_{m}(\bar{x}_k^i) a_{nm}; \\
+  %
+  B_{jk}^i &= \frac{L^i}{2 (N_{x}^i)^2} \tilde{B}_{jk}^i, \\
+  \tilde{B}_{jk}^i &= \frac{4}{\bar{c}_{j}\bar{c}_{k}} \sum_{n=0}^{N_{x}^i} \sum_{m=0}^{N_{x}^i} \frac{1}{\bar{c}_{n}\bar{c}_{m}} T_{n}(\bar{x}_j^i) T_{m}(\bar{x}_k^i) b_{nm}
+  \label{eq:DefofAjkBjk} \\
+  a_{nm} &= \int_{-1}^{1} \Bigl\{ \frac{\mathrm{d} T_{n}}{\mathrm{d} x} \frac{\mathrm{d} T_{m}}{\mathrm{d} x} \Bigr\} ~\mathrm{d}x \nonumber \\
+  &= 0, &~~n+m ~~\mathrm{odd}\\
+  &= \frac{nm}{2} [J_{|(n-m/2)}-J_{|(n+m/2)}], &~~n+m ~~\mathrm{even}
+  \label{eq:Defofanm} \\
+  J_{k} &= -4 \sum_{p=1}^k \frac{1}{2p-1}, &k \ge 1, \\
+        &= 0, &k = 0
+  \label{eq:DefofJk} \\
+  b_{nm} &= \int_{-1}^{1} \{ T_n T_m \} ~\mathrm{d}x \nonumber \\
+  &= 0, &~~n+m ~~\mathrm{odd}\\
+  &= \frac{1}{1-(n+m)^2} +\frac{1}{1-(n-m)^2}, &~~n+m ~~\mathrm{even}
+  \label{eq:Defofanm}
+\end{align}\\
+
+
+各要素で定まる要素方程式を足し上げ，系全体の方程式を得る．この操作を直接剛性法(Direct stiffness method)と呼び，得られたHelmholtz方程式のスペクトル要素近似は次式で表される．
+\begin{equation}
+  C_{pq} u_{q} = B_{pq} f_{q}
+  \label{eq:DefofSystemEquation}
+\end{equation}
+
+この行列方程式をGauss-Seidel法やJacobi法によって解くことで$n+1$ステップ目の解$u^{n+1}$を得る．
+
+Eq. \ref{eq:DefofSystemEquation}での解$u_{q}$，関数の既知の値$f_{q}$はEq. \ref{eq:DefofqofGlobalCoordinate}あるいはEq. \ref{eq:DefofqofGlobalCoordinate}から定める大域座標系で定義されている．\\
+
+直接剛性法では，要素行列を足し合わせる際，要素の境界に対応する行・列を重ねて足し合わせる．
+また，境界条件についてもここで導入する．
+これらについて以下で述べる．
+
+要素行列$B_{jk}^i$，$C_{jk}^i$は，要素の離散点数と同じ($N_{x}^i +1, N_{x}^i +1$)の大きさで定義されている．
+なお，実際には
+\begin{lstlisting}[caption=,label=LocalMatrix]
+   B_local(N_ele,0:N_x,0:N_x),  C_local(N_ele,0:N_x,0:N_x)
+\end{lstlisting}
+のように定義している．\\
+
+例として要素行列$B_{jk}^i$を直接剛性法で$B_{pq}$にたし上げることを考える．
+Eq. \ref{eq:OverlapofElements}で考えたように，各要素の境界は同じ点を表現している．
+
+よって要素行列を足し上げるとき，これらの座標に対応する$B_{N_{x}^i k}^i$行と$B_{0 k}^{i+1}$行，$B_{j N_{x}^i}^i$列と$B_{k 0}^{i+1}$列を重ねる．
+結局，$N_{x}^i +1, N_{x}^i +1$の大きさの行列$B_{jk}^i$を$M$個足しあげたとき，$B_{pq}$の大きさは($\sum_{i=1}^{M}N_{x}^i +1, \sum_{i=1}^{M}N_{x}^i +1$)となる．
+この行列の大きさは，Eq. \ref{eq:DefofqofGlobalCoordinate}で定まる元の方程式の大域離散点数と一致する．
+
+この様子をFig. \ref{fig:SumUp_ElementalEquation}に示す．
+\begin{figure}[h]
+  \centering
+  \includegraphics[bb=0.000000 0.000000 1356.000000 788.000000,width=14cm]{SumUp_ElementalEquation.png}
+  \caption{要素方程式の足し上げ}
+  \label{fig:SumUp_ElementalEquation}
+\end{figure}
+
+より簡単に全ての要素で離散点数が$N_{x}$で等しいとき，$B_{pq}$の大きさは($M\times N_{x}^i +1, M\times N_{x}^i +1$)となる．\\
+
+最後に境界条件について述べる．
+Dirichlet条件について，対応する行列の行を0とする行列圧縮(Matrix condensation)によって実現できる．
+Neumann条件について，行列に何も作用させず解くことで自然に導入(Naturally imposed)される\footnote{これもきちんと理解したい}．
+
+この様子をFig. \ref{fig:Dirichlet_bc}に示す．
+\begin{figure}[h]
+  \centering
+  \includegraphics[bb=0.000000 0.000000 1356.000000 442.000000,width=14cm]{Dirichlet_bc.png}
+  \caption{要素方程式の足し上げ}
+  \label{fig:Dirichlet_bc}
+\end{figure}
+
+\subsection{移流拡散方程式の解法アルゴリズム}
+
+
+\clearpage
+\section{結果・考察}
+\label{sec:ResultDiscussion}
+
+この節では，SEMを用いて解いた一次元移流拡散方程式の結果を考察する．
+
+\subsection{精度評価}
+\label{subsec:AccuracyEvaluation}
+
+数値計算により得た結果について，以下の3方法により調べた．
+\begin{description}
+ \item[誤差]\mbox{}\\
+	    解析解と数値解の結果を平均二乗誤差で調べた．
+ \item[行列方程式の反復回数．]\mbox{}\\
+	    Eq. \ref{eq:DefofSystemEquation}をGauss-Seidel法で解いた時の(第1時間ステップでの)反復回数を調べた．
+ \item[実行時間]\mbox{}\\
+	    プログラム全体の実行時間を調べた．
+\end{description}
+
+ここで，結果の検討に用いたパラメータは以下のとおりである．
+
+\begin{itembox}[l]{精度評価に用いた結果のパラメータ}
+  \begin{itemize}
+    \item 動粘度:$\nu$ = \texttt{nu} = 0.2
+    \item 時間刻み:$\Delta t$ = \texttt{delta\_t} = 0.005
+    \item 大域座標領域:$x_{\text{O}}-x_{\text{I}}$ = \texttt{L\_global} = 10.0
+    \item 大域座標始点:$x_{\text{I}}$ = \texttt{x\_in} = -3.0
+    \item 大域座標終点:$x_{\text{O}}$ = \texttt{L\_global}$-$\texttt{x\_in} = 7.0
+    \item 要素数:$M$ = \texttt{N\_ele} = 3,4,5,6,8,10
+    \item 要素内補完点数:$N_{x}^i$ = \texttt{N\_x} = 20,30,40,50
+    \item 切断波数:$N$ = \texttt{n\_max} = 14
+  \end{itemize}
+\end{itembox}
+
+以上より，比較する結果は全部で24通りである．\\
+
+Patera(1984)によれば，スペクトル要素法による解を収束させるためには2通りの手法があり，それらは
+\begin{enumerate}
+  \item 要素数$M$を一定とし，要素中の補完点数$N_{x}^i$を増やす．($M=\text{const.}, N_{x}^i \to \infty$)
+  \item 要素中の補完点数$N_{x}^i$を一定とし，要素数$M$を増やす．($N_{x}^i=\text{const.}, M \to \infty$)
+\end{enumerate}
+である．
+よって，次節以降ではこの2方針にもとづいて結果を比較する．
+
+
+また，今回の数値計算は全離散点内で補完点数が等しいとした．
+このときの全離散点数を再掲する．
+\begin{equation*}
+  N_{x}^\text{all} = M N_{x} +1
+\end{equation*}
+
+\subsubsection{離散点数と誤差の関係}
+\label{subsubsec:TotalInterpolant_Error}
+
+Fig. \ref{fig:Error_alldata}に全ての結果から計算した誤差を示す．
+$x$軸に離散点数，$y$軸に対数表記で誤差をとった．
+
+誤差は，解析解を$u_{q}^\text{ana}$，数値解を$u_{q}^\text{num}$として次式で計算した．
+$q$は大域離散点のナンバリングである．
+\begin{equation}
+  \epsilon = \frac{1}{N_{x}^\text{all}} \sum_{q=1}^{N_{x}^\text{all}} \sqrt{( u_{q}^\text{ana}-u_{q}^\text{num} )^2}
+\end{equation}
+\begin{figure}[h]
+  \centering
+  \includegraphics[bb=0 0 720 480,width=12cm]{Error_alldata.png}
+  \caption{全離散点数-解析解と数値解の誤差}
+  \label{fig:Error_alldata}
+\end{figure}
+\begin{figure}[h]
+    \subfloat[$M=\text{const.}, N_{x}^i \to \infty$]{
+        \includegraphics[bb=0 0 720 480,width=7cm,scale=0.5]{Error_eleconst_line.png}}
+    \subfloat[$N_{x}^i=\text{const.}, M \to \infty$]{
+        \includegraphics[bb=0 0 720 480,width=7cm,scale=0.5]{Error_intconst_line.png}}
+    \caption{2方針に基づいた全離散点数と誤差の比較}
+\end{figure}
+
+
+\subsubsection{離散点数と反復回数の関係}
+\label{subsubsec:TotalInterpolant_Converge}
+
+Fig. \ref{fig:Converge_alldata}に全ての結果の第一時間ステップに要した計算した反復回数を示す．
+$x$軸に離散点数，$y$軸に対数表記で反復回数をとった．
+\begin{figure}[h]
+  \centering
+  \includegraphics[bb=0 0 720 480,width=12cm]{Converge_alldata.png}
+  \caption{全離散点数-反復回数}
+  \label{fig:Converge_alldata}
+\end{figure}
+\begin{figure}[h]
+  \centering
+    \subfloat[$M=\text{const.}, N_{x}^i \to \infty$]{
+        \includegraphics[bb=0 0 720 480,width=7cm,scale=0.5]{Converge_eleconst_line.png}}
+    \subfloat[$N_{x}^i=\text{const.}, M \to \infty$]{
+        \includegraphics[bb=0 0 720 480,width=7cm,scale=0.5]{Converge_intconst_line.png}}
+    \caption{2方針に基づいた全離散点数と反復回数の比較}
+\end{figure}
+
+\subsubsection{離散点数と実行時間の関係}
+\label{subsubsec:TotalInterpolant_ExecutionTime}
+
+Fig. \ref{fig:ExecutionTime_alldata}に全ての結果から計算した実行時間を示す．
+$x$軸に離散点数，$y$軸に対数表記で実行時間をとった．
+\begin{figure}[h]
+  \centering
+  \includegraphics[bb=0 0 720 480,width=12cm]{Time_alldata.png}
+  \caption{全離散点数-実行時間}
+  \label{fig:ExecutionTime_alldata}
+\end{figure}
+\begin{figure}[h]
+  \centering
+    \subfloat[$M=\text{const.}, N_{x}^i \to \infty$]{
+        \includegraphics[bb=0 0 720 480,width=7cm,scale=0.5]{Time_eleconst_line.png}}
+    \subfloat[$N_{x}^i=\text{const.}, M \to \infty$]{
+        \includegraphics[bb=0 0 720 480,width=7cm,scale=0.5]{Time_intconst_line.png}}
+    \caption{2方針に基づいた全離散点数と実行時間の比較}
+\end{figure}
+
+
+\end{document}
